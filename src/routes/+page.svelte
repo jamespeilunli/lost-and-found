@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import type { Session } from '@supabase/supabase-js';
-  import { supabase } from '$lib/supabaseClient';
+  import { onMount } from "svelte";
+  import type { Session } from "@supabase/supabase-js";
+  import { supabase } from "$lib/supabaseClient";
 
-  type ItemStatus = 'lost' | 'found' | 'claimed';
+  type ItemStatus = "lost" | "found" | "claimed";
 
   type ItemRow = {
     id: string;
@@ -17,26 +17,29 @@
     created_by: string;
   };
 
-  const statusOptions: ItemStatus[] = ['lost', 'found', 'claimed'];
+  const statusOptions: ItemStatus[] = ["lost", "found", "claimed"];
 
   let session: Session | null = null;
   let authLoading = false;
-  let authError = '';
-  let email = '';
-  let password = '';
+  let authError = "";
+  let email = "";
+  let password = "";
   let isSigningUp = false;
 
   let items: ItemRow[] = [];
   let itemsLoading = false;
-  let itemsError = '';
+  let itemsError = "";
 
-  let title = '';
-  let description = '';
-  let category = '';
-  let status: ItemStatus = 'lost';
-  let imageUrl = '';
-  let locationFound = '';
-  let formError = '';
+  let title = "";
+  let description = "";
+  let category = "";
+  const defaultStatus: ItemStatus = "lost";
+  const imageBucket = "item-images";
+
+  let imageFile: File | null = null;
+  let imageInput: HTMLInputElement | null = null;
+  let locationFound = "";
+  let formError = "";
   let formLoading = false;
 
   async function loadSession() {
@@ -46,12 +49,9 @@
 
   async function loadItems() {
     itemsLoading = true;
-    itemsError = '';
+    itemsError = "";
 
-    const { data, error } = await supabase
-      .from('items')
-      .select('*')
-      .order('created_at', { ascending: false });
+    const { data, error } = await supabase.from("items").select("*").order("created_at", { ascending: false });
 
     if (error) {
       itemsError = error.message;
@@ -65,11 +65,11 @@
 
   async function handleAuthSubmit() {
     authLoading = true;
-    authError = '';
+    authError = "";
 
     if (!email.trim() || !password.trim()) {
       authLoading = false;
-      authError = 'Email and password are required.';
+      authError = "Email and password are required.";
       return;
     }
 
@@ -81,8 +81,8 @@
     if (error) {
       authError = error.message;
     } else {
-      email = '';
-      password = '';
+      email = "";
+      password = "";
     }
 
     authLoading = false;
@@ -90,7 +90,7 @@
 
   async function handleLogout() {
     authLoading = true;
-    authError = '';
+    authError = "";
 
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -102,40 +102,75 @@
 
   async function handleSubmitItem() {
     if (!session?.user) {
-      formError = 'Please sign in to submit an item.';
+      formError = "Please sign in to submit an item.";
       return;
     }
 
     if (!title.trim() || !description.trim() || !category.trim()) {
-      formError = 'Title, description, and category are required.';
+      formError = "Title, description, and category are required.";
       return;
     }
 
     formLoading = true;
-    formError = '';
+    formError = "";
+
+    let imageUrl: string | null = null;
+
+    if (imageFile) {
+      const { data: latestSession } = await supabase.auth.getSession();
+      const accessTokenPresent = Boolean(latestSession.session?.access_token);
+      console.log("[upload] session token present:", accessTokenPresent);
+
+      const fileExt = imageFile.name.split(".").pop() || "jpg";
+      const filePath = `${session.user.id}/${crypto.randomUUID()}.${fileExt}`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from(imageBucket)
+        .upload(filePath, imageFile, { contentType: imageFile.type, upsert: false });
+
+      if (uploadError) {
+        console.error("[upload] failed:", {
+          message: uploadError.message,
+          name: uploadError.name,
+          status: uploadError.status,
+          details: uploadError.details,
+          filePath,
+          bucket: imageBucket,
+        });
+        formError = uploadError.message;
+        formLoading = false;
+        return;
+      }
+      console.log("[upload] success:", uploadData);
+
+      const { data: imageData } = supabase.storage.from(imageBucket).getPublicUrl(filePath);
+      imageUrl = imageData.publicUrl;
+      console.log("[upload] public url:", imageUrl);
+    }
 
     const payload = {
       title: title.trim(),
       description: description.trim(),
       category: category.trim(),
-      status,
-      image_url: imageUrl.trim() ? imageUrl.trim() : null,
+      status: defaultStatus,
+      image_url: imageUrl,
       location_found: locationFound.trim() ? locationFound.trim() : null,
-      created_by: session.user.id
+      created_by: session.user.id,
     };
 
-    const { data, error } = await supabase.from('items').insert([payload]).select().single();
+    const { data, error } = await supabase.from("items").insert([payload]).select().single();
 
     if (error) {
       formError = error.message;
     } else if (data) {
       items = [data as ItemRow, ...items];
-      title = '';
-      description = '';
-      category = '';
-      status = 'lost';
-      imageUrl = '';
-      locationFound = '';
+      title = "";
+      description = "";
+      category = "";
+      imageFile = null;
+      if (imageInput) {
+        imageInput.value = "";
+      }
+      locationFound = "";
     }
 
     formLoading = false;
@@ -143,9 +178,9 @@
 
   async function updateItemStatus(itemId: string, nextStatus: ItemStatus) {
     const { data, error } = await supabase
-      .from('items')
+      .from("items")
       .update({ status: nextStatus })
-      .eq('id', itemId)
+      .eq("id", itemId)
       .select()
       .single();
 
@@ -158,7 +193,7 @@
   }
 
   async function deleteItem(itemId: string) {
-    const { error } = await supabase.from('items').delete().eq('id', itemId);
+    const { error } = await supabase.from("items").delete().eq("id", itemId);
 
     if (error) {
       itemsError = error.message;
@@ -232,7 +267,7 @@
               on:click={handleAuthSubmit}
               disabled={authLoading}
             >
-              {isSigningUp ? 'Sign up' : 'Sign in'}
+              {isSigningUp ? "Sign up" : "Sign in"}
             </button>
           </div>
         {/if}
@@ -244,10 +279,10 @@
             class="text-sm text-indigo-600 hover:text-indigo-800"
             on:click={() => {
               isSigningUp = !isSigningUp;
-              authError = '';
+              authError = "";
             }}
           >
-            {isSigningUp ? 'Already have an account? Sign in' : "New here? Create an account"}
+            {isSigningUp ? "Already have an account? Sign in" : "New here? Create an account"}
           </button>
         </div>
       {/if}
@@ -299,18 +334,6 @@
           ></textarea>
         </div>
         <div class="space-y-2">
-          <label class="text-sm font-medium text-gray-700" for="status-input">Status</label>
-          <select
-            id="status-input"
-            class="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500"
-            bind:value={status}
-          >
-            {#each statusOptions as option}
-              <option value={option}>{option}</option>
-            {/each}
-          </select>
-        </div>
-        <div class="space-y-2">
           <label class="text-sm font-medium text-gray-700" for="location-input">Location Found</label>
           <input
             id="location-input"
@@ -321,13 +344,17 @@
           />
         </div>
         <div class="md:col-span-2 space-y-2">
-          <label class="text-sm font-medium text-gray-700" for="image-url-input">Image URL</label>
+          <label class="text-sm font-medium text-gray-700" for="image-input">Image</label>
           <input
-            id="image-url-input"
-            type="url"
+            bind:this={imageInput}
+            id="image-input"
+            type="file"
+            accept="image/*"
             class="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500"
-            placeholder="https://example.com/image.jpg"
-            bind:value={imageUrl}
+            on:change={(event) => {
+              const file = (event.target as HTMLInputElement).files?.[0];
+              imageFile = file ?? null;
+            }}
           />
         </div>
       </div>
@@ -344,18 +371,20 @@
           on:click={handleSubmitItem}
           disabled={formLoading || !session}
         >
-          {formLoading ? 'Submitting...' : 'Submit Item'}
+          {formLoading ? "Submitting..." : "Submit Item"}
         </button>
         <button
           class="px-6 py-3 bg-gray-100 text-gray-700 border border-gray-300 rounded-lg font-medium hover:bg-gray-200 transition-colors"
           on:click={() => {
-            title = '';
-            description = '';
-            category = '';
-            status = 'lost';
-            imageUrl = '';
-            locationFound = '';
-            formError = '';
+            title = "";
+            description = "";
+            category = "";
+            imageFile = null;
+            if (imageInput) {
+              imageInput.value = "";
+            }
+            locationFound = "";
+            formError = "";
           }}
         >
           Clear
@@ -366,11 +395,7 @@
     <section class="bg-white rounded-2xl shadow-2xl p-6 md:p-10">
       <div class="flex items-center justify-between flex-wrap gap-2">
         <h2 class="text-2xl font-bold text-gray-800">Items</h2>
-        <button
-          class="text-sm text-indigo-600 hover:text-indigo-800"
-          on:click={loadItems}
-          disabled={itemsLoading}
-        >
+        <button class="text-sm text-indigo-600 hover:text-indigo-800" on:click={loadItems} disabled={itemsLoading}>
           Refresh list
         </button>
       </div>
@@ -418,8 +443,7 @@
                       class="px-2 py-1 border border-gray-200 rounded-md text-sm"
                       value={item.status}
                       on:change={(event) =>
-                        updateItemStatus(item.id, (event.target as HTMLSelectElement).value as ItemStatus)
-                      }
+                        updateItemStatus(item.id, (event.target as HTMLSelectElement).value as ItemStatus)}
                     >
                       {#each statusOptions as option}
                         <option value={option}>{option}</option>
