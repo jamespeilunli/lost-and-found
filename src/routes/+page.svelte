@@ -4,6 +4,7 @@
   import { supabase } from "$lib/supabaseClient";
 
   type ItemStatus = "lost" | "found" | "claimed";
+  type UserRole = "user" | "librarian";
 
   type ItemRow = {
     id: string;
@@ -20,6 +21,7 @@
   const statusOptions: ItemStatus[] = ["lost", "found", "claimed"];
 
   let session: Session | null = null;
+  let userRole: UserRole | null = null;
   let authLoading = false;
   let authError = "";
   let email = "";
@@ -41,10 +43,28 @@
   let locationFound = "";
   let formError = "";
   let formLoading = false;
+  $: isLibrarian = userRole === "librarian";
 
   async function loadSession() {
     const { data } = await supabase.auth.getSession();
     session = data.session;
+    await loadUserRole(data.session?.user.id);
+  }
+
+  async function loadUserRole(userId?: string) {
+    if (!userId) {
+      userRole = null;
+      return;
+    }
+
+    const { data, error } = await supabase.from("profiles").select("role").eq("id", userId).maybeSingle();
+
+    if (error) {
+      userRole = null;
+      return;
+    }
+
+    userRole = (data?.role as UserRole | null) ?? "user";
   }
 
   async function loadItems() {
@@ -177,6 +197,10 @@
   }
 
   async function updateItemStatus(itemId: string, nextStatus: ItemStatus) {
+    if (!isLibrarian) {
+      return;
+    }
+
     const { data, error } = await supabase
       .from("items")
       .update({ status: nextStatus })
@@ -193,6 +217,10 @@
   }
 
   async function deleteItem(itemId: string) {
+    if (!isLibrarian) {
+      return;
+    }
+
     const { error } = await supabase.from("items").delete().eq("id", itemId);
 
     if (error) {
@@ -209,6 +237,7 @@
 
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       session = nextSession;
+      loadUserRole(nextSession?.user.id);
       loadItems();
     });
 
@@ -234,12 +263,13 @@
       <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h2 class="text-2xl font-bold text-gray-800">User Session</h2>
-          <p class="text-sm text-gray-500">Sign in to submit items and manage statuses.</p>
+          <p class="text-sm text-gray-500">Sign in to submit items. Librarians can manage item statuses.</p>
         </div>
 
         {#if session}
           <div class="flex flex-col md:items-end gap-2">
             <span class="text-sm text-gray-600">Signed in as <strong>{session.user.email}</strong></span>
+            <span class="text-xs uppercase tracking-wide text-gray-500">Role: {userRole ?? "unknown"}</span>
             <button
               class="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
               on:click={handleLogout}
@@ -435,7 +465,7 @@
                   <div>Created: {new Date(item.created_at).toLocaleString()}</div>
                 </div>
               </div>
-              {#if session}
+              {#if isLibrarian}
                 <div class="border-t border-gray-200 p-4 bg-white space-y-2">
                   <span class="text-xs font-semibold text-gray-500">Librarian tools</span>
                   <div class="flex flex-wrap items-center gap-2">
