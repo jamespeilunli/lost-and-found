@@ -24,9 +24,6 @@
   let userRole: UserRole | null = null;
   let authLoading = false;
   let authError = "";
-  let email = "";
-  let password = "";
-  let isSigningUp = false;
 
   let items: ItemRow[] = [];
   let itemsLoading = false;
@@ -83,26 +80,18 @@
     itemsLoading = false;
   }
 
-  async function handleAuthSubmit() {
+  async function handleGoogleSignIn() {
     authLoading = true;
     authError = "";
 
-    if (!email.trim() || !password.trim()) {
-      authLoading = false;
-      authError = "Email and password are required.";
-      return;
-    }
-
-    const credentials = { email: email.trim(), password };
-    const { error } = isSigningUp
-      ? await supabase.auth.signUp(credentials)
-      : await supabase.auth.signInWithPassword(credentials);
+    const redirectTo = typeof window !== "undefined" ? `${window.location.origin}` : undefined;
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo },
+    });
 
     if (error) {
       authError = error.message;
-    } else {
-      email = "";
-      password = "";
     }
 
     authLoading = false;
@@ -279,43 +268,17 @@
             </button>
           </div>
         {:else}
-          <div class="flex flex-col md:flex-row gap-3">
-            <input
-              type="email"
-              placeholder="Email"
-              class="w-full md:w-56 px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500"
-              bind:value={email}
-            />
-            <input
-              type="password"
-              placeholder="Password"
-              class="w-full md:w-56 px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500"
-              bind:value={password}
-            />
+          <div>
             <button
               class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-              on:click={handleAuthSubmit}
+              on:click={handleGoogleSignIn}
               disabled={authLoading}
             >
-              {isSigningUp ? "Sign up" : "Sign in"}
+              {authLoading ? "Redirecting..." : "Continue with Google"}
             </button>
           </div>
         {/if}
       </div>
-
-      {#if !session}
-        <div class="mt-4">
-          <button
-            class="text-sm text-indigo-600 hover:text-indigo-800"
-            on:click={() => {
-              isSigningUp = !isSigningUp;
-              authError = "";
-            }}
-          >
-            {isSigningUp ? "Already have an account? Sign in" : "New here? Create an account"}
-          </button>
-        </div>
-      {/if}
 
       {#if authError}
         <div class="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
