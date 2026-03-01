@@ -243,22 +243,21 @@
 
 <div class="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 py-8 px-4">
   <div class="max-w-6xl mx-auto space-y-8">
-    <header class="bg-white rounded-2xl shadow-2xl p-6 md:p-10 text-center">
-      <h1 class="text-3xl md:text-4xl font-bold text-gray-800">Lost and Found</h1>
-      <p class="mt-2 text-gray-600">Submit, track, and update community lost-and-found items.</p>
-    </header>
-
-    <section class="bg-white rounded-2xl shadow-2xl p-6 md:p-10">
+    <header class="bg-white/95 rounded-2xl shadow-2xl p-5 md:p-6 border border-white/40">
       <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h2 class="text-2xl font-bold text-gray-800">User Session</h2>
-          <p class="text-sm text-gray-500">Sign in to submit items. Librarians can manage item statuses.</p>
+        <div class="text-left">
+          <h1 class="!text-left text-2xl md:text-3xl font-bold text-gray-800 leading-tight">Lost and Found</h1>
+          <p class="text-sm text-gray-600 mt-1">Submit, track, and update community lost-and-found items.</p>
         </div>
 
         {#if session}
-          <div class="flex flex-col md:items-end gap-2">
-            <span class="text-sm text-gray-600">Signed in as <strong>{session.user.email}</strong></span>
-            <span class="text-xs uppercase tracking-wide text-gray-500">Role: {userRole ?? "unknown"}</span>
+          <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 md:justify-end">
+            <div class="text-sm text-gray-600">
+              Signed in as <strong>{session.user.email}</strong>
+            </div>
+            <span class="w-fit px-2 py-1 text-xs uppercase tracking-wide rounded-full bg-gray-100 text-gray-600">
+              {userRole ?? "unknown"}
+            </span>
             <button
               class="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
               on:click={handleLogout}
@@ -268,15 +267,13 @@
             </button>
           </div>
         {:else}
-          <div>
-            <button
-              class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-              on:click={handleGoogleSignIn}
-              disabled={authLoading}
-            >
-              {authLoading ? "Redirecting..." : "Continue with Google"}
-            </button>
-          </div>
+          <button
+            class="w-full sm:w-auto px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            on:click={handleGoogleSignIn}
+            disabled={authLoading}
+          >
+            {authLoading ? "Redirecting..." : "Continue with Google"}
+          </button>
         {/if}
       </div>
 
@@ -285,7 +282,7 @@
           {authError}
         </div>
       {/if}
-    </section>
+    </header>
 
     <section class="bg-white rounded-2xl shadow-2xl p-6 md:p-10">
       <div class="flex items-center justify-between flex-wrap gap-2">
