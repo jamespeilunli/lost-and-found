@@ -28,18 +28,6 @@
   let items: ItemRow[] = [];
   let itemsLoading = false;
   let itemsError = "";
-
-  let title = "";
-  let description = "";
-  let category = "";
-  const defaultStatus: ItemStatus = "lost";
-  const imageBucket = "item-images";
-
-  let imageFile: File | null = null;
-  let imageInput: HTMLInputElement | null = null;
-  let locationFound = "";
-  let formError = "";
-  let formLoading = false;
   $: isLibrarian = userRole === "librarian";
 
   async function loadSession() {
@@ -107,82 +95,6 @@
     }
 
     authLoading = false;
-  }
-
-  async function handleSubmitItem() {
-    if (!session?.user) {
-      formError = "Please sign in to submit an item.";
-      return;
-    }
-
-    if (!title.trim() || !description.trim() || !category.trim()) {
-      formError = "Title, description, and category are required.";
-      return;
-    }
-
-    formLoading = true;
-    formError = "";
-
-    let imageUrl: string | null = null;
-
-    if (imageFile) {
-      const { data: latestSession } = await supabase.auth.getSession();
-      const accessTokenPresent = Boolean(latestSession.session?.access_token);
-      console.log("[upload] session token present:", accessTokenPresent);
-
-      const fileExt = imageFile.name.split(".").pop() || "jpg";
-      const filePath = `${session.user.id}/${crypto.randomUUID()}.${fileExt}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from(imageBucket)
-        .upload(filePath, imageFile, { contentType: imageFile.type, upsert: false });
-
-      if (uploadError) {
-        console.error("[upload] failed:", {
-          message: uploadError.message,
-          name: uploadError.name,
-          status: uploadError.status,
-          details: uploadError.details,
-          filePath,
-          bucket: imageBucket,
-        });
-        formError = uploadError.message;
-        formLoading = false;
-        return;
-      }
-      console.log("[upload] success:", uploadData);
-
-      const { data: imageData } = supabase.storage.from(imageBucket).getPublicUrl(filePath);
-      imageUrl = imageData.publicUrl;
-      console.log("[upload] public url:", imageUrl);
-    }
-
-    const payload = {
-      title: title.trim(),
-      description: description.trim(),
-      category: category.trim(),
-      status: defaultStatus,
-      image_url: imageUrl,
-      location_found: locationFound.trim() ? locationFound.trim() : null,
-      created_by: session.user.id,
-    };
-
-    const { data, error } = await supabase.from("items").insert([payload]).select().single();
-
-    if (error) {
-      formError = error.message;
-    } else if (data) {
-      items = [data as ItemRow, ...items];
-      title = "";
-      description = "";
-      category = "";
-      imageFile = null;
-      if (imageInput) {
-        imageInput.value = "";
-      }
-      locationFound = "";
-    }
-
-    formLoading = false;
   }
 
   async function updateItemStatus(itemId: string, nextStatus: ItemStatus) {
@@ -288,108 +200,21 @@
   <main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
     <section class="bg-white border border-gray-200 p-6 md:p-8">
       <div class="flex items-center justify-between flex-wrap gap-2">
-        <h2 class="text-2xl font-bold text-gray-800">Submit an Item</h2>
-        {#if !session}
-          <span class="text-sm text-gray-500">Sign in required</span>
-        {/if}
-      </div>
-
-      <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="space-y-2">
-          <label class="text-sm font-medium text-gray-700" for="title-input">Title *</label>
-          <input
-            id="title-input"
-            type="text"
-            class="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500"
-            placeholder="Blue backpack"
-            bind:value={title}
-          />
-        </div>
-        <div class="space-y-2">
-          <label class="text-sm font-medium text-gray-700" for="category-input">Category *</label>
-          <input
-            id="category-input"
-            type="text"
-            class="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500"
-            placeholder="Accessories"
-            bind:value={category}
-          />
-        </div>
-        <div class="md:col-span-2 space-y-2">
-          <label class="text-sm font-medium text-gray-700" for="description-input">Description *</label>
-          <textarea
-            id="description-input"
-            rows="3"
-            class="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500"
-            placeholder="Red tag with initials on the zipper"
-            bind:value={description}
-          ></textarea>
-        </div>
-        <div class="space-y-2">
-          <label class="text-sm font-medium text-gray-700" for="location-input">Location Found</label>
-          <input
-            id="location-input"
-            type="text"
-            class="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500"
-            placeholder="Library entrance"
-            bind:value={locationFound}
-          />
-        </div>
-        <div class="md:col-span-2 space-y-2">
-          <label class="text-sm font-medium text-gray-700" for="image-input">Image</label>
-          <input
-            bind:this={imageInput}
-            id="image-input"
-            type="file"
-            accept="image/*"
-            class="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-indigo-500"
-            on:change={(event) => {
-              const file = (event.target as HTMLInputElement).files?.[0];
-              imageFile = file ?? null;
-            }}
-          />
-        </div>
-      </div>
-
-      {#if formError}
-        <div class="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
-          {formError}
-        </div>
-      {/if}
-
-      <div class="mt-6 flex flex-wrap gap-3">
-        <button
-          class="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium disabled:cursor-not-allowed transition-all"
-          on:click={handleSubmitItem}
-          disabled={formLoading || !session}
-        >
-          {formLoading ? "Submitting..." : "Submit Item"}
-        </button>
-        <button
-          class="px-4 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded-lg font-medium hover:bg-gray-200 transition-colors"
-          on:click={() => {
-            title = "";
-            description = "";
-            category = "";
-            imageFile = null;
-            if (imageInput) {
-              imageInput.value = "";
-            }
-            locationFound = "";
-            formError = "";
-          }}
-        >
-          Clear
-        </button>
-      </div>
-    </section>
-
-    <section class="bg-white border border-gray-200 p-6 md:p-8">
-      <div class="flex items-center justify-between flex-wrap gap-2">
         <h2 class="text-2xl font-bold text-gray-800">Items</h2>
-        <button class="text-sm text-indigo-600 hover:text-indigo-800" on:click={loadItems} disabled={itemsLoading}>
-          Refresh list
-        </button>
+        <div class="flex items-center gap-4">
+          {#if session}
+            <a href="/submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">
+              Submit an Item
+            </a>
+          {:else}
+            <button class="px-4 py-2 bg-gray-200 text-gray-500 rounded-lg text-sm cursor-not-allowed" disabled>
+              Submit an Item
+            </button>
+          {/if}
+          <button class="text-sm text-indigo-600 hover:text-indigo-800" on:click={loadItems} disabled={itemsLoading}>
+            Refresh list
+          </button>
+        </div>
       </div>
 
       {#if itemsLoading}

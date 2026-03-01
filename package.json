@@ -27,6 +27,7 @@
 		"vite": "^7.2.6"
 	},
 	"dependencies": {
-		"@supabase/supabase-js": "^2.90.1"
+		"@supabase/supabase-js": "^2.90.1",
+		"lucide-svelte": "^0.575.0"
 	}
 }
