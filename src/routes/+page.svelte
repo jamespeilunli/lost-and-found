@@ -241,12 +241,12 @@
   <meta name="description" content="Track lost-and-found entries" />
 </svelte:head>
 
-<div class="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 py-8 px-4">
-  <div class="max-w-6xl mx-auto space-y-8">
-    <header class="bg-white/95 rounded-2xl shadow-2xl p-5 md:p-6 border border-white/40">
+<div class="min-h-screen bg-gray-100">
+  <header class="bg-white border-b border-gray-200">
+    <div class="max-w-6xl mx-auto px-4 py-4 md:py-5">
       <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div class="text-left">
-          <h1 class="!text-left text-2xl md:text-3xl font-bold text-gray-800 leading-tight">Lost and Found</h1>
+          <h1 class="text-left text-2xl md:text-3xl font-bold text-gray-800 leading-tight">Lost and Found</h1>
           <p class="text-sm text-gray-600 mt-1">Submit, track, and update community lost-and-found items.</p>
         </div>
 
@@ -282,9 +282,11 @@
           {authError}
         </div>
       {/if}
-    </header>
+    </div>
+  </header>
 
-    <section class="bg-white rounded-2xl shadow-2xl p-6 md:p-10">
+  <main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
+    <section class="bg-white border border-gray-200 p-6 md:p-8">
       <div class="flex items-center justify-between flex-wrap gap-2">
         <h2 class="text-2xl font-bold text-gray-800">Submit an Item</h2>
         {#if !session}
@@ -357,14 +359,14 @@
 
       <div class="mt-6 flex flex-wrap gap-3">
         <button
-          class="px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg font-medium hover:from-indigo-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          class="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium disabled:cursor-not-allowed transition-all"
           on:click={handleSubmitItem}
           disabled={formLoading || !session}
         >
           {formLoading ? "Submitting..." : "Submit Item"}
         </button>
         <button
-          class="px-6 py-3 bg-gray-100 text-gray-700 border border-gray-300 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+          class="px-4 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded-lg font-medium hover:bg-gray-200 transition-colors"
           on:click={() => {
             title = "";
             description = "";
@@ -382,7 +384,7 @@
       </div>
     </section>
 
-    <section class="bg-white rounded-2xl shadow-2xl p-6 md:p-10">
+    <section class="bg-white border border-gray-200 p-6 md:p-8">
       <div class="flex items-center justify-between flex-wrap gap-2">
         <h2 class="text-2xl font-bold text-gray-800">Items</h2>
         <button class="text-sm text-indigo-600 hover:text-indigo-800" on:click={loadItems} disabled={itemsLoading}>
@@ -401,7 +403,7 @@
       {:else}
         <div class="mt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {#each items as item (item.id)}
-            <article class="bg-gray-50 rounded-xl overflow-hidden shadow-md flex flex-col">
+            <article class="bg-white border border-gray-200 overflow-hidden flex flex-col">
               {#if item.image_url}
                 <img src={item.image_url} alt={item.title} class="w-full h-44 object-cover" />
               {:else}
@@ -453,5 +455,5 @@
         </div>
       {/if}
     </section>
-  </div>
+  </main>
 </div>
