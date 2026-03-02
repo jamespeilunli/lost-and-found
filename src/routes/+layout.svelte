@@ -1,8 +1,11 @@
 <script lang="ts">
-  import './layout.css';
+  import "./layout.css";
+  import { Toaster } from "svelte-sonner";
 
   let { children } = $props();
 </script>
+
+<Toaster richColors />
 
 <div class="app">
   <main>{@render children()}</main>

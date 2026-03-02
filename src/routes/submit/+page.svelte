@@ -4,6 +4,7 @@
   import { ArrowLeft } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
+  import { toast } from "svelte-sonner";
 
   let session: Session | null = null;
 
@@ -15,7 +16,6 @@
   let imageInput: HTMLInputElement | null = null;
 
   let formError = "";
-  let formSuccess = "";
   let formLoading = false;
 
   const defaultStatus = "lost";
@@ -32,19 +32,16 @@
   async function handleSubmitItem() {
     if (!session?.user) {
       formError = "Please sign in to submit an item.";
-      formSuccess = "";
       return;
     }
 
     if (!title.trim() || !description.trim() || !category.trim()) {
       formError = "Title, description, and category are required.";
-      formSuccess = "";
       return;
     }
 
     formLoading = true;
     formError = "";
-    formSuccess = "";
 
     let imageUrl: string | null = null;
 
@@ -80,15 +77,8 @@
     if (error) {
       formError = error.message;
     } else {
-      title = "";
-      description = "";
-      category = "";
-      locationFound = "";
-      imageFile = null;
-      if (imageInput) {
-        imageInput.value = "";
-      }
-      formSuccess = "Item submitted successfully.";
+      toast.success("Item submitted successfully.");
+      await goto("/");
     }
 
     formLoading = false;
@@ -104,7 +94,6 @@
       imageInput.value = "";
     }
     formError = "";
-    formSuccess = "";
   }
 
   onMount(() => {
@@ -209,12 +198,6 @@
       {#if formError}
         <div class="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
           {formError}
-        </div>
-      {/if}
-
-      {#if formSuccess}
-        <div class="mt-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg">
-          {formSuccess}
         </div>
       {/if}
 
