@@ -50,7 +50,10 @@
       const filePath = `${session.user.id}/${crypto.randomUUID()}.${fileExt}`;
       const { error: uploadError } = await supabase.storage
         .from(imageBucket)
-        .upload(filePath, imageFile, { contentType: imageFile.type, upsert: false });
+        .upload(filePath, imageFile, {
+          contentType: imageFile.type,
+          upsert: false,
+        });
 
       if (uploadError) {
         formError = uploadError.message;
@@ -58,7 +61,9 @@
         return;
       }
 
-      const { data: imageData } = supabase.storage.from(imageBucket).getPublicUrl(filePath);
+      const { data: imageData } = supabase.storage
+        .from(imageBucket)
+        .getPublicUrl(filePath);
       imageUrl = imageData.publicUrl;
     }
 
@@ -72,10 +77,14 @@
       created_by: session.user.id,
     };
 
-    const { error } = await supabase.from("items").insert([payload]);
+    const { error } = await supabase
+      .from("items")
+      .insert([payload])
+      .select()
+      .single();
 
     if (error) {
-      formError = error.message;
+      formError = "Failed to submit item: " + error.message;
     } else {
       toast.success("Item submitted successfully.");
       await goto("/");
@@ -120,7 +129,9 @@
 <div class="min-h-screen bg-gray-100">
   <header class="bg-white border-b border-gray-200">
     <div class="max-w-6xl mx-auto px-4 py-4 md:py-5">
-      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div
+        class="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
+      >
         <div class="text-left">
           <a
             href="/"
@@ -130,7 +141,11 @@
             <ArrowLeft size={18} />
             <span>Back to items</span>
           </a>
-          <h1 class="text-left text-2xl md:text-3xl font-bold text-gray-800 leading-tight mt-1">Submit an Item</h1>
+          <h1
+            class="text-left text-2xl md:text-3xl font-bold text-gray-800 leading-tight mt-1"
+          >
+            Submit an Item
+          </h1>
         </div>
       </div>
     </div>
@@ -140,7 +155,9 @@
     <section class="bg-white border border-gray-200 p-6 md:p-8">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="space-y-2">
-          <label class="text-sm font-medium text-gray-700" for="title-input">Title *</label>
+          <label class="text-sm font-medium text-gray-700" for="title-input"
+            >Title *</label
+          >
           <input
             id="title-input"
             type="text"
@@ -150,7 +167,9 @@
           />
         </div>
         <div class="space-y-2">
-          <label class="text-sm font-medium text-gray-700" for="category-input">Category *</label>
+          <label class="text-sm font-medium text-gray-700" for="category-input"
+            >Category *</label
+          >
           <input
             id="category-input"
             type="text"
@@ -160,7 +179,10 @@
           />
         </div>
         <div class="md:col-span-2 space-y-2">
-          <label class="text-sm font-medium text-gray-700" for="description-input">Description *</label>
+          <label
+            class="text-sm font-medium text-gray-700"
+            for="description-input">Description *</label
+          >
           <textarea
             id="description-input"
             rows="3"
@@ -170,7 +192,9 @@
           ></textarea>
         </div>
         <div class="space-y-2">
-          <label class="text-sm font-medium text-gray-700" for="location-input">Location Found</label>
+          <label class="text-sm font-medium text-gray-700" for="location-input"
+            >Location Found</label
+          >
           <input
             id="location-input"
             type="text"
@@ -180,7 +204,9 @@
           />
         </div>
         <div class="md:col-span-2 space-y-2">
-          <label class="text-sm font-medium text-gray-700" for="image-input">Image</label>
+          <label class="text-sm font-medium text-gray-700" for="image-input"
+            >Image</label
+          >
           <input
             bind:this={imageInput}
             id="image-input"
@@ -196,7 +222,9 @@
       </div>
 
       {#if formError}
-        <div class="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
+        <div
+          class="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg"
+        >
           {formError}
         </div>
       {/if}
