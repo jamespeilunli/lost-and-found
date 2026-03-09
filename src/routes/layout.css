@@ -2,4 +2,19 @@
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
 
+@theme {
+  /* Dark Reader Background Surfaces */
+  --color-gray-900: #181a1b;
+  --color-gray-800: #242526;
+  --color-gray-700: #2a2c2d;
+  
+  /* Dark Reader Borders */
+  --color-gray-600: #38383d;
+  --color-gray-500: #545b5e;
+  
+  /* Dark Reader Text */
+  --color-gray-300: #b2aba1; 
+  --color-gray-100: #e8e6e3;
+}
+
 @custom-variant dark (&:where(.dark, .dark *));

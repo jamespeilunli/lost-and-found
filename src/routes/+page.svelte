@@ -222,10 +222,10 @@
 </svelte:head>
 
 <div
-  class="min-h-screen bg-gray-100 dark:bg-[#181a1b] transition-colors duration-200"
+  class="min-h-screen bg-gray-100 undefined transition-colors duration-200"
 >
   <header
-    class="bg-white dark:bg-[#181a1b] border-b border-gray-200 dark:border-[#736b5e] transition-colors duration-200"
+    class="bg-white undefined border-b border-gray-200 undefined transition-colors duration-200"
   >
     <div class="max-w-6xl mx-auto px-4 py-4 md:py-5">
       <div
@@ -233,18 +233,18 @@
       >
         <div class="text-left">
           <h1
-            class="text-left text-2xl md:text-3xl font-bold text-gray-800 dark:text-[#e8e6e3] leading-tight"
+            class="text-left text-2xl md:text-3xl font-bold text-gray-800 undefined leading-tight"
           >
             Lost and Found
           </h1>
-          <p class="text-sm text-gray-600 dark:text-[#b2aba1] mt-1">
+          <p class="text-sm text-gray-600 undefined mt-1">
             Submit, track, and update community lost-and-found items.
           </p>
         </div>
 
         <div class="flex items-center gap-3">
           <button
-            class="p-2 rounded-lg bg-gray-100 dark:bg-[#181a1b] text-gray-600 dark:text-[#b2aba1] hover:bg-gray-200 dark:hover:bg-[#2a2c2d] transition-colors"
+            class="p-2 rounded-lg bg-gray-100 undefined text-gray-600 undefined hover:bg-gray-200 undefined transition-colors"
             on:click={toggleTheme}
             aria-label="Toggle dark mode"
           >
@@ -259,11 +259,11 @@
             <div
               class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 md:justify-end"
             >
-              <div class="text-sm text-gray-600 dark:text-[#b2aba1]">
+              <div class="text-sm text-gray-600 undefined">
                 Signed in as <strong>{session.user.email}</strong>
               </div>
               <span
-                class="w-fit px-2 py-1 text-xs uppercase tracking-wide rounded-full bg-gray-100 dark:bg-[#181a1b] text-gray-600 dark:text-[#b2aba1]"
+                class="w-fit px-2 py-1 text-xs uppercase tracking-wide rounded-full bg-gray-100 undefined text-gray-600 undefined"
               >
                 {userRole ?? "unknown"}
               </span>
@@ -299,10 +299,10 @@
 
   <main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
     <section
-      class="bg-white dark:bg-[#181a1b] border border-gray-200 dark:border-[#736b5e] p-6 md:p-8 rounded-lg transition-colors duration-200"
+      class="bg-white undefined border border-gray-200 undefined p-6 md:p-8 rounded-lg transition-colors duration-200"
     >
       <div class="flex items-center justify-between flex-wrap gap-2">
-        <h2 class="text-2xl font-bold text-gray-800 dark:text-[#e8e6e3]">Items</h2>
+        <h2 class="text-2xl font-bold text-gray-800 undefined">Items</h2>
         <div class="flex items-center gap-4">
           {#if session}
             <a
@@ -313,7 +313,7 @@
             </a>
           {:else}
             <button
-              class="px-4 py-2 bg-gray-200 dark:bg-[#181a1b] text-gray-500 dark:text-[#b2aba1] rounded-lg text-sm cursor-not-allowed transition-colors"
+              class="px-4 py-2 bg-gray-200 undefined text-gray-500 undefined rounded-lg text-sm cursor-not-allowed transition-colors"
               disabled
             >
               Submit an Item
@@ -330,7 +330,7 @@
       </div>
 
       {#if itemsLoading}
-        <p class="mt-4 text-gray-500 dark:text-[#b2aba1]">Loading items...</p>
+        <p class="mt-4 text-gray-500 undefined">Loading items...</p>
       {:else if itemsError}
         <div
           class="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg"
@@ -338,14 +338,14 @@
           {itemsError}
         </div>
       {:else if items.length === 0}
-        <p class="mt-4 text-gray-500 dark:text-[#b2aba1] italic">
+        <p class="mt-4 text-gray-500 undefined italic">
           No items yet. Submit the first entry.
         </p>
       {:else}
         <div class="mt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {#each items as item (item.id)}
             <article
-              class="bg-white dark:bg-[#181a1b] border border-gray-200 dark:border-[#736b5e] overflow-hidden flex flex-col rounded-lg transition-colors duration-200"
+              class="bg-white undefined border border-gray-200 undefined overflow-hidden flex flex-col rounded-lg transition-colors duration-200"
             >
               {#if item.image_url}
                 <img
@@ -355,7 +355,7 @@
                 />
               {:else}
                 <div
-                  class="w-full h-44 bg-gray-200 dark:bg-[#181a1b] flex items-center justify-center text-gray-500 dark:text-[#b2aba1] text-sm transition-colors duration-200"
+                  class="w-full h-44 bg-gray-200 undefined flex items-center justify-center text-gray-500 undefined text-sm transition-colors duration-200"
                 >
                   No image
                 </div>
@@ -363,7 +363,7 @@
               <div class="p-4 space-y-3 flex-1">
                 <div class="flex items-start justify-between gap-2">
                   <h3
-                    class="text-lg font-semibold text-gray-800 dark:text-[#e8e6e3]"
+                    class="text-lg font-semibold text-gray-800 undefined"
                   >
                     {item.title}
                   </h3>
@@ -378,10 +378,10 @@
                     {item.status}
                   </span>
                 </div>
-                <p class="text-sm text-gray-600 dark:text-[#b2aba1]">
+                <p class="text-sm text-gray-600 undefined">
                   {item.description}
                 </p>
-                <div class="text-xs text-gray-500 dark:text-[#b2aba1] space-y-1">
+                <div class="text-xs text-gray-500 undefined space-y-1">
                   <div>Category: {item.category}</div>
                   {#if item.location_found}
                     <div>Location: {item.location_found}</div>
@@ -393,13 +393,13 @@
               </div>
               {#if isLibrarian || (session && session.user.id === item.created_by)}
                 <div
-                  class="border-t border-gray-200 dark:border-[#736b5e] p-4 bg-white dark:bg-[#181a1b] transition-colors duration-200"
+                  class="border-t border-gray-200 undefined p-4 bg-white undefined transition-colors duration-200"
                 >
                   <div class="flex items-center justify-between w-full gap-2">
                     <div class="flex items-center gap-2">
                       {#if isLibrarian}
                         <select
-                          class="px-2 py-1 border border-gray-200 dark:border-[#545b5e] rounded-md text-sm bg-white dark:bg-[#181a1b] text-gray-800 dark:text-[#e8e6e3] transition-colors"
+                          class="px-2 py-1 border border-gray-200 undefined rounded-md text-sm bg-white undefined text-gray-800 undefined transition-colors"
                           value={item.status}
                           on:change={(event) =>
                             updateItemStatus(
