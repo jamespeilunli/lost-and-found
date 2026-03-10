@@ -302,7 +302,9 @@
       class="bg-white dark:bg-[#181a1b] border border-gray-200 dark:border-[#736b5e] p-6 md:p-8 rounded-lg transition-colors duration-200"
     >
       <div class="flex items-center justify-between flex-wrap gap-2">
-        <h2 class="text-2xl font-bold text-gray-800 dark:text-[#e8e6e3]">Items</h2>
+        <h2 class="text-2xl font-bold text-gray-800 dark:text-[#e8e6e3]">
+          Items
+        </h2>
         <div class="flex items-center gap-4">
           {#if session}
             <a
@@ -381,7 +383,9 @@
                 <p class="text-sm text-gray-600 dark:text-[#b2aba1]">
                   {item.description}
                 </p>
-                <div class="text-xs text-gray-500 dark:text-[#b2aba1] space-y-1">
+                <div
+                  class="text-xs text-gray-500 dark:text-[#b2aba1] space-y-1"
+                >
                   <div>Category: {item.category}</div>
                   {#if item.location_found}
                     <div>Location: {item.location_found}</div>
@@ -399,7 +403,7 @@
                     <div class="flex items-center gap-2">
                       {#if isLibrarian}
                         <select
-                          class="px-2 py-1 border border-gray-200 dark:border-[#545b5e] rounded-md text-sm bg-white dark:bg-[#181a1b] text-gray-800 dark:text-[#e8e6e3] transition-colors"
+                          class="py-1.5 pl-3 pr-8 border border-gray-200 dark:border-[#545b5e] rounded-md text-sm bg-white dark:bg-[#181a1b] text-gray-800 dark:text-[#e8e6e3] transition-colors"
                           value={item.status}
                           on:change={(event) =>
                             updateItemStatus(
