@@ -3,3 +3,15 @@
 @plugin '@tailwindcss/typography';
 
 @custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  html,
+  body {
+    background-color: #f3f4f6;
+  }
+
+  html.dark,
+  html.dark body {
+    background-color: #181a1b;
+  }
+}
