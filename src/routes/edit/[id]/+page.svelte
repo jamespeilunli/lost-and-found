@@ -12,7 +12,18 @@
 
     let title = "";
     let description = "";
-    let category = "";
+    const CATEGORY_OPTIONS = [
+        "Accessories",
+        "Bags / Backpacks",
+        "Clothing",
+        "Electronics",
+        "ID / Cards",
+        "Keys",
+        "Wallet",
+        "Other",
+    ];
+    let selectedCategory = "";
+    let customCategory = "";
     let locationFound = "";
     let imageUrl: string | null = null;
 
@@ -53,7 +64,13 @@
 
         title = itemData.title;
         description = itemData.description;
-        category = itemData.category;
+        if (CATEGORY_OPTIONS.includes(itemData.category)) {
+            selectedCategory = itemData.category;
+            customCategory = "";
+        } else {
+            selectedCategory = "Other";
+            customCategory = itemData.category;
+        }
         locationFound = itemData.location_found || "";
         imageUrl = itemData.image_url;
 
@@ -66,7 +83,11 @@
             return;
         }
 
-        if (!title.trim() || !description.trim() || !category.trim()) {
+        const finalCategory = (
+            selectedCategory === "Other" ? customCategory : selectedCategory
+        ).trim();
+
+        if (!title.trim() || !description.trim() || !finalCategory) {
             formError = "Title, description, and category are required.";
             return;
         }
@@ -101,7 +122,7 @@
         const payload = {
             title: title.trim(),
             description: description.trim(),
-            category: category.trim(),
+            category: finalCategory,
             location_found: locationFound.trim() ? locationFound.trim() : null,
             image_url: newImageUrl,
         };
@@ -197,14 +218,27 @@
                     <div class="space-y-2">
                         <label
                             class="text-sm font-medium text-gray-700 dark:text-[#b2aba1] transition-colors"
-                            for="category-input">Category *</label
+                            for="category-select">Category *</label
                         >
-                        <input
-                            id="category-input"
-                            type="text"
+                        <select
+                            id="category-select"
                             class="w-full px-3 py-2 border-2 border-gray-200 dark:border-[#545b5e] dark:bg-[#181a1b] dark:text-[#e8e6e3] rounded-lg focus:outline-none focus:border-yellow-500 dark:focus:border-yellow-400 transition-colors"
-                            bind:value={category}
-                        />
+                            bind:value={selectedCategory}
+                        >
+                            <option value="" disabled>Select a category</option>
+                            {#each CATEGORY_OPTIONS as option}
+                                <option value={option}>{option}</option>
+                            {/each}
+                        </select>
+                        {#if selectedCategory === "Other"}
+                            <input
+                                id="category-input"
+                                type="text"
+                                class="w-full px-3 py-2 mt-2 border-2 border-gray-200 dark:border-[#545b5e] dark:bg-[#181a1b] dark:text-[#e8e6e3] rounded-lg focus:outline-none focus:border-yellow-500 dark:focus:border-yellow-400 transition-colors"
+                                placeholder="Please specify"
+                                bind:value={customCategory}
+                            />
+                        {/if}
                     </div>
                     <div class="md:col-span-2 space-y-2">
                         <label
