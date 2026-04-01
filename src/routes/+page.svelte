@@ -42,14 +42,14 @@
 
   function statusBadgeVariant(status: ItemStatus) {
     if (status === "found") {
-      return "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-300";
+      return "bg-emerald-100 text-emerald-900 uppercase dark:bg-emerald-950 dark:text-emerald-300";
     }
 
     if (status === "claimed") {
-      return "bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-300";
+      return "bg-sky-100 text-sky-900 uppercase dark:bg-sky-950 dark:text-sky-300";
     }
 
-    return "bg-primary/20 text-foreground dark:bg-primary/25";
+    return "bg-primary/20 text-foreground uppercase dark:bg-primary/25";
   }
 
   function toggleTheme() {
@@ -278,27 +278,27 @@
 
   <main class="mx-auto max-w-6xl px-4 py-6">
     <Card class="border-border/80 bg-card shadow-none">
-      <CardHeader class="gap-4 md:flex-row md:items-start md:justify-between">
-        <div>
+      <CardHeader class="gap-3">
+        <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <CardTitle class="text-xl md:text-2xl">Items</CardTitle>
-          <CardDescription>Lost items stay prioritized, and your own submissions appear first.</CardDescription>
+          <div class="flex items-center gap-4">
+            {#if session}
+              <Button href="/submit" class="gap-1.5 text-sm">
+                <Plus size={16} />
+                <span>Add item</span>
+              </Button>
+            {:else}
+              <Button variant="secondary" class="gap-1.5 text-sm" disabled>
+                <Plus size={16} />
+                <span>Add item</span>
+              </Button>
+            {/if}
+            <Button variant="ghost" class="text-sm" onclick={loadItems} disabled={itemsLoading}>Refresh</Button>
+          </div>
         </div>
-        <div class="flex items-center gap-4">
-          {#if session}
-            <Button href="/submit" class="gap-1.5">
-              <Plus size={16} />
-              <span>Add item</span>
-            </Button>
-          {:else}
-            <Button variant="secondary" class="gap-1.5" disabled>
-              <Plus size={16} />
-              <span>Add item</span>
-            </Button>
-          {/if}
-          <Button variant="ghost" onclick={loadItems} disabled={itemsLoading}>Refresh</Button>
-        </div>
+        <CardDescription>Lost items stay prioritized, and your own submissions appear first.</CardDescription>
       </CardHeader>
-      <Separator />
+      <Separator class="bg-border/80" />
       <CardContent class="pb-5">
         {#if itemsLoading}
           <p class="text-muted-foreground">Loading items...</p>
@@ -321,7 +321,7 @@
                   </div>
                 {/if}
 
-                <CardContent class="flex-1 space-y-2">
+                <CardContent class="border-border/80 flex-1 space-y-2">
                   <div class="flex items-start justify-between">
                     <h3 class="text-base font-semibold md:text-lg">{item.title}</h3>
                     <Badge class={statusBadgeVariant(item.status)}>
@@ -343,7 +343,7 @@
                 </CardContent>
 
                 {#if isLibrarian || (session && session.user.id === item.created_by)}
-                  <CardFooter class="flex items-center justify-between gap-2 bg-card px-4 py-4">
+                  <CardFooter class="border-border/80 flex items-center justify-between gap-2 bg-card px-4 py-4">
                     <div class="flex flex-wrap items-center gap-2">
                       {#if isLibrarian}
                         <Select

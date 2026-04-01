@@ -15,7 +15,7 @@
 			<CardTitle class="text-2xl">About this app</CardTitle>
 			<CardDescription>Static content rendered with the same UI system as the rest of the frontend.</CardDescription>
 		</CardHeader>
-		<Separator />
+		<Separator class="bg-border/80" />
 		<CardContent class="space-y-4 pt-6 text-sm text-muted-foreground">
 			<p>
 				This is a <a class="text-foreground underline underline-offset-4" href="https://svelte.dev/docs/kit">SvelteKit</a> app. You can make your own by typing the following into your command line and following the prompts:
