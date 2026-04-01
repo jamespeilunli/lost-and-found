@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Sun, Moon } from "lucide-svelte";
+  import { Sun, Moon, Plus } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
   import { toast } from "svelte-sonner";
@@ -240,7 +240,7 @@
             Lost and Found
           </h1>
           <p class="text-sm text-gray-600 dark:text-[#b2aba1] mt-1">
-            Submit, track, and update community lost-and-found items.
+            Add, track, and update community lost-and-found items.
           </p>
         </div>
 
@@ -311,16 +311,18 @@
           {#if session}
             <a
               href="/submit"
-              class="px-4 py-2 bg-yellow-400 dark:bg-yellow-500 text-black font-medium rounded-lg text-sm hover:bg-yellow-500 dark:hover:bg-yellow-400 transition-colors"
+              class="inline-flex items-center gap-1.5 pl-3 pr-4 py-2 bg-yellow-400 dark:bg-yellow-500 text-black font-medium rounded-lg text-sm hover:bg-yellow-500 dark:hover:bg-yellow-400 transition-colors"
             >
-              Submit an Item
+              <Plus size={16} />
+              <span>Add item</span>
             </a>
           {:else}
             <button
-              class="px-4 py-2 bg-gray-200 dark:bg-[#181a1b] text-gray-500 dark:text-[#b2aba1] rounded-lg text-sm cursor-not-allowed transition-colors"
+              class="inline-flex items-center gap-1.5 pl-3 pr-4 py-2 bg-gray-200 dark:bg-[#181a1b] text-gray-500 dark:text-[#b2aba1] rounded-lg text-sm cursor-not-allowed transition-colors"
               disabled
             >
-              Submit an Item
+              <Plus size={16} />
+              <span>Add item</span>
             </button>
           {/if}
           <button
@@ -343,7 +345,7 @@
         </div>
       {:else if items.length === 0}
         <p class="mt-4 text-gray-500 dark:text-[#b2aba1] italic">
-          No items yet. Submit the first entry.
+          No items yet. Add the first item.
         </p>
       {:else}
         <div class="mt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">

@@ -42,7 +42,7 @@
 
   async function handleSubmitItem() {
     if (!session?.user) {
-      formError = "Please sign in to submit an item.";
+      formError = "Please sign in to add an item.";
       return;
     }
 
@@ -99,9 +99,9 @@
       .single();
 
     if (error) {
-      formError = "Failed to submit item: " + error.message;
+      formError = "Failed to add item: " + error.message;
     } else {
-      toast.success("Item submitted successfully.");
+      toast.success("Item added successfully.");
       await goto("/");
     }
 
@@ -138,8 +138,8 @@
 </script>
 
 <svelte:head>
-  <title>Submit Item | Lost and Found</title>
-  <meta name="description" content="Submit a lost-and-found item" />
+  <title>Add Item | Lost and Found</title>
+  <meta name="description" content="Add a lost-and-found item" />
 </svelte:head>
 
 <div
@@ -164,7 +164,7 @@
           <h1
             class="text-left text-2xl md:text-3xl font-bold text-gray-800 dark:text-[#e8e6e3] leading-tight mt-1 transition-colors"
           >
-            Submit an Item
+            Add Item
           </h1>
         </div>
       </div>
@@ -273,7 +273,7 @@
           on:click={handleSubmitItem}
           disabled={formLoading || !session}
         >
-          {formLoading ? "Submitting..." : "Submit Item"}
+          {formLoading ? "Adding..." : "Add item"}
         </button>
         <button
           class="px-4 py-2 bg-gray-100 dark:bg-[#181a1b] text-gray-700 dark:text-[#b2aba1] border border-gray-300 dark:border-[#545b5e] rounded-lg font-medium hover:bg-gray-200 dark:hover:bg-[#2a2c2d] transition-colors"
