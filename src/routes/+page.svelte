@@ -4,6 +4,12 @@
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
   import { toast } from "svelte-sonner";
+  import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
+  import { Badge } from "$lib/components/ui/badge";
+  import { Button } from "$lib/components/ui/button";
+  import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "$lib/components/ui/card";
+  import { Select, SelectContent, SelectItem, SelectTrigger } from "$lib/components/ui/select";
+  import { Separator } from "$lib/components/ui/separator";
 
   type ItemStatus = "lost" | "found" | "claimed";
   type UserRole = "user" | "librarian";
@@ -33,6 +39,18 @@
   $: isLibrarian = userRole === "librarian";
 
   let isDark = false;
+
+  function statusBadgeVariant(status: ItemStatus) {
+    if (status === "found") {
+      return "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-300";
+    }
+
+    if (status === "claimed") {
+      return "bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-300";
+    }
+
+    return "bg-primary/20 text-foreground dark:bg-primary/25";
+  }
 
   function toggleTheme() {
     isDark = !isDark;
@@ -207,25 +225,21 @@
   <meta name="description" content="Track lost-and-found entries" />
 </svelte:head>
 
-<div class="min-h-screen bg-gray-100 dark:bg-[#181a1b] transition-colors duration-200">
-  <header
-    class="bg-white dark:bg-[#181a1b] border-b border-gray-200 dark:border-[#736b5e] transition-colors duration-200"
-  >
-    <div class="max-w-6xl mx-auto px-4 py-4 md:py-5">
+<div class="min-h-screen bg-background text-foreground transition-colors duration-200">
+  <header class="border-b bg-card/95 backdrop-blur-sm transition-colors duration-200">
+    <div class="mx-auto max-w-6xl px-4 py-4 md:py-5">
       <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div class="text-left">
-          <h1 class="text-left text-2xl md:text-3xl font-bold text-gray-800 dark:text-[#e8e6e3] leading-tight">
-            Lost and Found
-          </h1>
-          <p class="text-sm text-gray-600 dark:text-[#b2aba1] mt-1">
-            Add, track, and update community lost-and-found items.
-          </p>
+          <h1 class="text-left text-2xl font-bold leading-tight md:text-3xl">Lost and Found</h1>
+          <p class="mt-1 text-sm text-muted-foreground">Add, track, and update community lost-and-found items.</p>
         </div>
 
         <div class="flex items-center gap-3">
-          <button
-            class="p-2 rounded-lg bg-gray-100 dark:bg-[#181a1b] text-gray-600 dark:text-[#b2aba1] hover:bg-gray-200 dark:hover:bg-[#2a2c2d] transition-colors"
-            on:click={toggleTheme}
+          <Button
+            variant="outline"
+            size="icon"
+            class="bg-background"
+            onclick={toggleTheme}
             aria-label="Toggle dark mode"
           >
             {#if isDark}
@@ -233,175 +247,142 @@
             {:else}
               <Moon size={20} />
             {/if}
-          </button>
+          </Button>
 
           {#if session}
             <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 md:justify-end">
-              <div class="text-sm text-gray-600 dark:text-[#b2aba1]">
+              <div class="text-sm text-muted-foreground">
                 Signed in as <strong>{session.user.email}</strong>
               </div>
-              <span
-                class="w-fit px-2 py-1 text-xs uppercase tracking-wide rounded-full bg-gray-100 dark:bg-[#181a1b] text-gray-600 dark:text-[#b2aba1]"
-              >
+              <Badge variant="outline" class="w-fit border-primary/40 uppercase tracking-wide">
                 {userRole ?? "unknown"}
-              </span>
-              <button
-                class="px-4 py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors"
-                on:click={handleLogout}
-                disabled={authLoading}
-              >
-                Log out
-              </button>
+              </Badge>
+              <Button variant="outline" onclick={handleLogout} disabled={authLoading}>Log out</Button>
             </div>
           {:else}
-            <button
-              class="w-full sm:w-auto px-4 py-2 bg-yellow-400 dark:bg-yellow-500 text-black font-medium rounded-lg hover:bg-yellow-500 dark:hover:bg-yellow-400 transition-colors"
-              on:click={handleGoogleSignIn}
-              disabled={authLoading}
-            >
+            <Button class="w-full sm:w-auto" onclick={handleGoogleSignIn} disabled={authLoading}>
               {authLoading ? "Redirecting..." : "Continue with Google"}
-            </button>
+            </Button>
           {/if}
         </div>
       </div>
 
       {#if authError}
-        <div class="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
-          {authError}
-        </div>
+        <Alert variant="destructive" class="mt-4">
+          <AlertTitle>Authentication error</AlertTitle>
+          <AlertDescription>{authError}</AlertDescription>
+        </Alert>
       {/if}
     </div>
   </header>
 
-  <main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
-    <section
-      class="bg-white dark:bg-[#181a1b] border border-gray-200 dark:border-[#736b5e] p-6 md:p-8 rounded-lg transition-colors duration-200"
-    >
-      <div class="flex items-center justify-between flex-wrap gap-2">
-        <h2 class="text-2xl font-bold text-gray-800 dark:text-[#e8e6e3]">Items</h2>
+  <main class="mx-auto max-w-6xl px-4 py-6">
+    <Card class="border-border/80 bg-card shadow-none">
+      <CardHeader class="gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <CardTitle class="text-xl md:text-2xl">Items</CardTitle>
+          <CardDescription>Lost items stay prioritized, and your own submissions appear first.</CardDescription>
+        </div>
         <div class="flex items-center gap-4">
           {#if session}
-            <a
-              href="/submit"
-              class="inline-flex items-center gap-1.5 pl-3 pr-4 py-2 bg-yellow-400 dark:bg-yellow-500 text-black font-medium rounded-lg text-sm hover:bg-yellow-500 dark:hover:bg-yellow-400 transition-colors"
-            >
+            <Button href="/submit" class="gap-1.5">
               <Plus size={16} />
               <span>Add item</span>
-            </a>
+            </Button>
           {:else}
-            <button
-              class="inline-flex items-center gap-1.5 pl-3 pr-4 py-2 bg-gray-200 dark:bg-[#181a1b] text-gray-500 dark:text-[#b2aba1] rounded-lg text-sm cursor-not-allowed transition-colors"
-              disabled
-            >
+            <Button variant="secondary" class="gap-1.5" disabled>
               <Plus size={16} />
               <span>Add item</span>
-            </button>
+            </Button>
           {/if}
-          <button
-            class="text-sm text-yellow-600 dark:text-yellow-400 hover:text-yellow-800 dark:hover:text-yellow-300 transition-colors font-medium"
-            on:click={loadItems}
-            disabled={itemsLoading}
-          >
-            Refresh
-          </button>
+          <Button variant="ghost" onclick={loadItems} disabled={itemsLoading}>Refresh</Button>
         </div>
-      </div>
-
-      {#if itemsLoading}
-        <p class="mt-4 text-gray-500 dark:text-[#b2aba1]">Loading items...</p>
-      {:else if itemsError}
-        <div class="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
-          {itemsError}
-        </div>
-      {:else if items.length === 0}
-        <p class="mt-4 text-gray-500 dark:text-[#b2aba1] italic">No items yet. Add the first item.</p>
-      {:else}
-        <div class="mt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {#each items as item (item.id)}
-            <article
-              class="bg-white dark:bg-[#181a1b] border border-gray-200 dark:border-[#736b5e] overflow-hidden flex flex-col rounded-lg transition-colors duration-200"
-            >
-              {#if item.image_url}
-                <img src={item.image_url} alt={item.title} class="w-full h-44 object-cover" />
-              {:else}
-                <div
-                  class="w-full h-44 bg-gray-200 dark:bg-[#181a1b] flex items-center justify-center text-gray-500 dark:text-[#b2aba1] text-sm transition-colors duration-200"
-                >
-                  No image
-                </div>
-              {/if}
-              <div class="p-4 space-y-3 flex-1">
-                <div class="flex items-start justify-between gap-2">
-                  <h3 class="text-lg font-semibold text-gray-800 dark:text-[#e8e6e3]">
-                    {item.title}
-                  </h3>
-                  <span
-                    class="px-2 py-1 text-xs font-semibold uppercase rounded-full {item.status === 'found'
-                      ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400'
-                      : item.status === 'claimed'
-                        ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400'
-                        : 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-400'}"
-                  >
-                    {item.status}
-                  </span>
-                </div>
-                <p class="text-sm text-gray-600 dark:text-[#b2aba1]">
-                  {item.description}
-                </p>
-                <div class="text-xs text-gray-500 dark:text-[#b2aba1] space-y-1">
-                  <div>Category: {item.category}</div>
-                  {#if item.location_found}
-                    <div>Location: {item.location_found}</div>
-                  {/if}
-                  <div>
-                    Created: {new Date(item.created_at).toLocaleString()}
+      </CardHeader>
+      <Separator />
+      <CardContent class="pb-5">
+        {#if itemsLoading}
+          <p class="text-muted-foreground">Loading items...</p>
+        {:else if itemsError}
+          <Alert variant="destructive">
+            <AlertTitle>Could not load items</AlertTitle>
+            <AlertDescription>{itemsError}</AlertDescription>
+          </Alert>
+        {:else if items.length === 0}
+          <p class="italic text-muted-foreground">No items yet. Add the first item.</p>
+        {:else}
+          <div class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {#each items as item (item.id)}
+              <Card class="border-border/80 bg-card py-0">
+                {#if item.image_url}
+                  <img src={item.image_url} alt={item.title} class="h-44 w-full object-cover" />
+                {:else}
+                  <div class="flex h-44 w-full items-center justify-center bg-muted text-sm text-muted-foreground">
+                    No image
                   </div>
-                </div>
-              </div>
-              {#if isLibrarian || (session && session.user.id === item.created_by)}
-                <div
-                  class="border-t border-gray-200 dark:border-[#736b5e] p-4 bg-white dark:bg-[#181a1b] transition-colors duration-200"
-                >
-                  <div class="flex items-center justify-between w-full gap-2">
-                    <div class="flex items-center gap-2">
+                {/if}
+
+                <CardContent class="flex-1 space-y-2">
+                  <div class="flex items-start justify-between">
+                    <h3 class="text-base font-semibold md:text-lg">{item.title}</h3>
+                    <Badge class={statusBadgeVariant(item.status)}>
+                      {item.status}
+                    </Badge>
+                  </div>
+                  <p class="text-sm text-muted-foreground">
+                    {item.description}
+                  </p>
+                  <div class="space-y-1 text-xs text-muted-foreground">
+                    <div>Category: {item.category}</div>
+                    {#if item.location_found}
+                      <div>Location: {item.location_found}</div>
+                    {/if}
+                    <div>
+                      Created: {new Date(item.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                </CardContent>
+
+                {#if isLibrarian || (session && session.user.id === item.created_by)}
+                  <CardFooter class="flex items-center justify-between gap-2 bg-card px-4 py-4">
+                    <div class="flex flex-wrap items-center gap-2">
                       {#if isLibrarian}
-                        <select
-                          class="py-1.5 pl-3 pr-8 border border-gray-200 dark:border-[#545b5e] rounded-md text-sm bg-white dark:bg-[#181a1b] text-gray-800 dark:text-[#e8e6e3] transition-colors"
+                        <Select
+                          type="single"
                           value={item.status}
-                          on:change={(event) =>
-                            updateItemStatus(item.id, (event.target as HTMLSelectElement).value as ItemStatus)}
+                          onValueChange={(value: string) => updateItemStatus(item.id, value as ItemStatus)}
                         >
-                          {#each statusOptions as option}
-                            <option value={option}>{option}</option>
-                          {/each}
-                        </select>
+                          <SelectTrigger class="w-[140px] bg-background">
+                            {item.status}
+                          </SelectTrigger>
+                          <SelectContent>
+                            {#each statusOptions as option}
+                              <SelectItem value={option} label={option} />
+                            {/each}
+                          </SelectContent>
+                        </Select>
                       {/if}
                       {#if session && session.user.id === item.created_by}
-                        <a
-                          href="/edit/{item.id}"
-                          class="px-3 py-1 text-sm bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-400 rounded-md hover:bg-yellow-200 dark:hover:bg-yellow-900/60 transition-colors font-medium"
-                        >
-                          Edit
-                        </a>
+                        <Button href="/edit/{item.id}" variant="outline" size="sm">Edit</Button>
                       {/if}
                     </div>
-                    <button
-                      class="px-3 py-1 text-sm bg-red-600 dark:bg-red-500/80 text-white rounded-md hover:bg-red-700 dark:hover:bg-red-500 transition-colors"
-                      on:click={() => {
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onclick={() => {
                         if (confirm("Are you sure you want to delete this item?")) {
                           deleteItem(item.id);
                         }
                       }}
                     >
                       Delete
-                    </button>
-                  </div>
-                </div>
-              {/if}
-            </article>
-          {/each}
-        </div>
-      {/if}
-    </section>
+                    </Button>
+                  </CardFooter>
+                {/if}
+              </Card>
+            {/each}
+          </div>
+        {/if}
+      </CardContent>
+    </Card>
   </main>
 </div>

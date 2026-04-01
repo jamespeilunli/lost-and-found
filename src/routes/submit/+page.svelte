@@ -5,6 +5,25 @@
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
   import { toast } from "svelte-sonner";
+  import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
+  import { Button } from "$lib/components/ui/button";
+  import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardFooter,
+    CardHeader,
+    CardTitle,
+  } from "$lib/components/ui/card";
+  import { Input } from "$lib/components/ui/input";
+  import { Label } from "$lib/components/ui/label";
+  import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+  } from "$lib/components/ui/select";
+  import { Textarea } from "$lib/components/ui/textarea";
 
   let session: Session | null = null;
 
@@ -142,146 +161,122 @@
   <meta name="description" content="Add a lost-and-found item" />
 </svelte:head>
 
-<div
-  class="min-h-screen bg-gray-100 dark:bg-[#181a1b] transition-colors duration-200"
->
-  <header
-    class="bg-white dark:bg-[#181a1b] border-b border-gray-200 dark:border-[#736b5e] transition-colors duration-200"
-  >
-    <div class="max-w-6xl mx-auto px-4 py-4 md:py-5">
-      <div
-        class="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
-      >
+<div class="min-h-screen bg-background text-foreground transition-colors duration-200">
+  <header class="border-b bg-card/95 backdrop-blur-sm transition-colors duration-200">
+    <div class="mx-auto max-w-6xl px-4 py-4 md:py-5">
+      <div class="flex flex-col gap-4">
         <div class="text-left">
-          <a
-            href="/"
-            aria-label="Back to items"
-            class="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-gray-300 dark:border-[#545b5e] text-gray-700 dark:text-[#b2aba1] text-sm hover:bg-gray-100 dark:hover:bg-[#2a2c2d] transition-colors"
-          >
+          <Button href="/" variant="outline" size="sm" class="gap-1">
             <ArrowLeft size={18} />
             <span>Back to items</span>
-          </a>
-          <h1
-            class="text-left text-2xl md:text-3xl font-bold text-gray-800 dark:text-[#e8e6e3] leading-tight mt-1 transition-colors"
-          >
+          </Button>
+          <h1 class="mt-2 text-left text-2xl font-bold leading-tight md:text-3xl">
             Add Item
           </h1>
+          <p class="mt-1 text-sm text-muted-foreground">
+            Submit a new report with enough detail for someone else to recognize it.
+          </p>
         </div>
       </div>
     </div>
   </header>
 
-  <main class="max-w-4xl mx-auto px-4 py-6">
-    <section
-      class="bg-white dark:bg-[#181a1b] border border-gray-200 dark:border-[#736b5e] p-6 md:p-8 rounded-lg shadow-sm transition-colors duration-200"
-    >
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="space-y-2">
-          <label
-            class="text-sm font-medium text-gray-700 dark:text-[#b2aba1] transition-colors"
-            for="title-input">Title *</label
-          >
-          <input
-            id="title-input"
-            type="text"
-            class="w-full px-3 py-2 border-2 border-gray-200 dark:border-[#545b5e] dark:bg-[#181a1b] dark:text-[#e8e6e3] rounded-lg focus:outline-none focus:border-yellow-500 dark:focus:border-yellow-400 transition-colors"
-            placeholder="Blue backpack"
-            bind:value={title}
-          />
-        </div>
-        <div class="space-y-2">
-          <label
-            class="text-sm font-medium text-gray-700 dark:text-[#b2aba1] transition-colors"
-            for="category-select">Category *</label
-          >
-          <select
-            id="category-select"
-            class="w-full px-3 py-2 border-2 border-gray-200 dark:border-[#545b5e] dark:bg-[#181a1b] dark:text-[#e8e6e3] rounded-lg focus:outline-none focus:border-yellow-500 dark:focus:border-yellow-400 transition-colors"
-            bind:value={selectedCategory}
-          >
-            <option value="" disabled>Select a category</option>
-            {#each CATEGORY_OPTIONS as option}
-              <option value={option}>{option}</option>
-            {/each}
-          </select>
-          {#if selectedCategory === "Other"}
-            <input
-              id="category-input"
+  <main class="mx-auto max-w-4xl px-4 py-6">
+    <Card class="border-border/80 bg-card shadow-none">
+      <CardHeader>
+        <CardTitle>Item details</CardTitle>
+        <CardDescription>
+          Required fields are marked with an asterisk.
+        </CardDescription>
+      </CardHeader>
+      <CardContent class="space-y-6">
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div class="space-y-2">
+            <Label for="title-input">Title *</Label>
+            <Input
+              id="title-input"
               type="text"
-              class="w-full px-3 py-2 mt-2 border-2 border-gray-200 dark:border-[#545b5e] dark:bg-[#181a1b] dark:text-[#e8e6e3] rounded-lg focus:outline-none focus:border-yellow-500 dark:focus:border-yellow-400 transition-colors"
-              placeholder="Please specify"
-              bind:value={customCategory}
+              placeholder="Blue backpack"
+              bind:value={title}
             />
-          {/if}
-        </div>
-        <div class="md:col-span-2 space-y-2">
-          <label
-            class="text-sm font-medium text-gray-700 dark:text-[#b2aba1] transition-colors"
-            for="description-input">Description *</label
-          >
-          <textarea
-            id="description-input"
-            rows="3"
-            class="w-full px-3 py-2 border-2 border-gray-200 dark:border-[#545b5e] dark:bg-[#181a1b] dark:text-[#e8e6e3] rounded-lg focus:outline-none focus:border-yellow-500 dark:focus:border-yellow-400 transition-colors"
-            placeholder="Red tag with initials on the zipper"
-            bind:value={description}
-          ></textarea>
-        </div>
-        <div class="space-y-2">
-          <label
-            class="text-sm font-medium text-gray-700 dark:text-[#b2aba1] transition-colors"
-            for="location-input">Location Found</label
-          >
-          <input
-            id="location-input"
-            type="text"
-            class="w-full px-3 py-2 border-2 border-gray-200 dark:border-[#545b5e] dark:bg-[#181a1b] dark:text-[#e8e6e3] rounded-lg focus:outline-none focus:border-yellow-500 dark:focus:border-yellow-400 transition-colors"
-            placeholder="Library entrance"
-            bind:value={locationFound}
-          />
-        </div>
-        <div class="md:col-span-2 space-y-2">
-          <label
-            class="text-sm font-medium text-gray-700 dark:text-[#b2aba1] transition-colors"
-            for="image-input">Image</label
-          >
-          <input
-            bind:this={imageInput}
-            id="image-input"
-            type="file"
-            accept="image/*"
-            class="w-full px-3 py-2 border-2 border-gray-200 dark:border-[#545b5e] dark:bg-[#181a1b] dark:text-[#e8e6e3] file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-yellow-100 file:text-yellow-800 dark:file:bg-yellow-900/50 dark:file:text-yellow-400 hover:file:bg-yellow-200 dark:hover:file:bg-yellow-900/80 rounded-lg focus:outline-none focus:border-yellow-500 dark:focus:border-yellow-400 transition-colors"
-            on:change={(event) => {
-              const file = (event.target as HTMLInputElement).files?.[0];
-              imageFile = file ?? null;
-            }}
-          />
-        </div>
-      </div>
+          </div>
 
-      {#if formError}
-        <div
-          class="mt-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded-lg transition-colors"
-        >
-          {formError}
-        </div>
-      {/if}
+          <div class="space-y-2">
+            <Label for="category-select-trigger">Category *</Label>
+            <Select type="single" bind:value={selectedCategory}>
+              <SelectTrigger
+                id="category-select-trigger"
+                class="w-full justify-between bg-background"
+              >
+                {selectedCategory || "Select a category"}
+              </SelectTrigger>
+              <SelectContent>
+                {#each CATEGORY_OPTIONS as option}
+                  <SelectItem value={option} label={option} />
+                {/each}
+              </SelectContent>
+            </Select>
+            {#if selectedCategory === "Other"}
+              <Input
+                id="category-input"
+                type="text"
+                placeholder="Please specify"
+                bind:value={customCategory}
+              />
+            {/if}
+          </div>
 
-      <div class="mt-6 flex flex-wrap gap-3">
-        <button
-          class="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 dark:bg-yellow-500 dark:hover:bg-yellow-400 text-black rounded-lg font-medium disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
-          on:click={handleSubmitItem}
-          disabled={formLoading || !session}
-        >
+          <div class="space-y-2 md:col-span-2">
+            <Label for="description-input">Description *</Label>
+            <Textarea
+              id="description-input"
+              rows={4}
+              placeholder="Red tag with initials on the zipper"
+              bind:value={description}
+            />
+          </div>
+
+          <div class="space-y-2">
+            <Label for="location-input">Location Found</Label>
+            <Input
+              id="location-input"
+              type="text"
+              placeholder="Library entrance"
+              bind:value={locationFound}
+            />
+          </div>
+
+          <div class="space-y-2 md:col-span-2">
+            <Label for="image-input">Image</Label>
+            <Input
+              bind:ref={imageInput}
+              id="image-input"
+              type="file"
+              accept="image/*"
+              class="bg-background"
+              onchange={(event: Event) => {
+                const file = (event.currentTarget as HTMLInputElement).files?.[0];
+                imageFile = file ?? null;
+              }}
+            />
+          </div>
+        </div>
+
+        {#if formError}
+          <Alert variant="destructive">
+            <AlertTitle>Could not add item</AlertTitle>
+            <AlertDescription>{formError}</AlertDescription>
+          </Alert>
+        {/if}
+      </CardContent>
+      <CardFooter class="flex flex-wrap gap-3">
+        <Button onclick={handleSubmitItem} disabled={formLoading || !session}>
           {formLoading ? "Adding..." : "Add item"}
-        </button>
-        <button
-          class="px-4 py-2 bg-gray-100 dark:bg-[#181a1b] text-gray-700 dark:text-[#b2aba1] border border-gray-300 dark:border-[#545b5e] rounded-lg font-medium hover:bg-gray-200 dark:hover:bg-[#2a2c2d] transition-colors"
-          on:click={clearForm}
-        >
+        </Button>
+        <Button variant="outline" onclick={clearForm}>
           Clear
-        </button>
-      </div>
-    </section>
+        </Button>
+      </CardFooter>
+    </Card>
   </main>
 </div>
