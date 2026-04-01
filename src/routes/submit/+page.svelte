@@ -166,7 +166,7 @@
     <div class="mx-auto max-w-6xl px-4 py-4 md:py-5">
       <div class="flex flex-col gap-4">
         <div class="text-left">
-          <Button href="/" variant="outline" size="sm" class="gap-1">
+          <Button href="/" variant="outline" size="sm" class="gap-1 text-sm">
             <ArrowLeft size={18} />
             <span>Back to items</span>
           </Button>
@@ -182,31 +182,32 @@
   </header>
 
   <main class="mx-auto max-w-4xl px-4 py-6">
-    <Card class="border-border/80 bg-card shadow-none">
+    <Card class="border-border/80 bg-card text-sm shadow-none">
       <CardHeader>
         <CardTitle>Item details</CardTitle>
-        <CardDescription>
+        <CardDescription class="text-sm">
           Required fields are marked with an asterisk.
         </CardDescription>
       </CardHeader>
       <CardContent class="space-y-6">
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div class="space-y-2">
-            <Label for="title-input">Title *</Label>
+            <Label class="text-sm" for="title-input">Title *</Label>
             <Input
               id="title-input"
               type="text"
+              class="text-sm"
               placeholder="Blue backpack"
               bind:value={title}
             />
           </div>
 
           <div class="space-y-2">
-            <Label for="category-select-trigger">Category *</Label>
+            <Label class="text-sm" for="category-select-trigger">Category *</Label>
             <Select type="single" bind:value={selectedCategory}>
               <SelectTrigger
                 id="category-select-trigger"
-                class="w-full justify-between bg-background"
+                class="w-full justify-between bg-background text-sm"
               >
                 {selectedCategory || "Select a category"}
               </SelectTrigger>
@@ -220,6 +221,7 @@
               <Input
                 id="category-input"
                 type="text"
+                class="text-sm"
                 placeholder="Please specify"
                 bind:value={customCategory}
               />
@@ -227,9 +229,10 @@
           </div>
 
           <div class="space-y-2 md:col-span-2">
-            <Label for="description-input">Description *</Label>
+            <Label class="text-sm" for="description-input">Description *</Label>
             <Textarea
               id="description-input"
+              class="text-sm"
               rows={4}
               placeholder="Red tag with initials on the zipper"
               bind:value={description}
@@ -237,23 +240,24 @@
           </div>
 
           <div class="space-y-2">
-            <Label for="location-input">Location Found</Label>
+            <Label class="text-sm" for="location-input">Location Found</Label>
             <Input
               id="location-input"
               type="text"
+              class="text-sm"
               placeholder="Library entrance"
               bind:value={locationFound}
             />
           </div>
 
           <div class="space-y-2 md:col-span-2">
-            <Label for="image-input">Image</Label>
+            <Label class="text-sm" for="image-input">Image</Label>
             <Input
               bind:ref={imageInput}
               id="image-input"
               type="file"
               accept="image/*"
-              class="bg-background"
+              class="bg-background text-sm"
               onchange={(event: Event) => {
                 const file = (event.currentTarget as HTMLInputElement).files?.[0];
                 imageFile = file ?? null;
@@ -263,17 +267,17 @@
         </div>
 
         {#if formError}
-          <Alert variant="destructive">
+          <Alert variant="destructive" class="text-sm">
             <AlertTitle>Could not add item</AlertTitle>
             <AlertDescription>{formError}</AlertDescription>
           </Alert>
         {/if}
       </CardContent>
       <CardFooter class="flex flex-wrap gap-3">
-        <Button onclick={handleSubmitItem} disabled={formLoading || !session}>
+        <Button class="text-sm" onclick={handleSubmitItem} disabled={formLoading || !session}>
           {formLoading ? "Adding..." : "Add item"}
         </Button>
-        <Button variant="outline" onclick={clearForm}>
+        <Button variant="outline" class="text-sm" onclick={clearForm}>
           Clear
         </Button>
       </CardFooter>

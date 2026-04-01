@@ -254,13 +254,13 @@
               <div class="text-sm text-muted-foreground">
                 Signed in as <strong>{session.user.email}</strong>
               </div>
-              <Badge variant="outline" class="w-fit border-primary/40 uppercase tracking-wide">
+              <Badge variant="outline" class="w-fit border-primary/40 text-sm uppercase tracking-wide">
                 {userRole ?? "unknown"}
               </Badge>
-              <Button variant="outline" onclick={handleLogout} disabled={authLoading}>Log out</Button>
+              <Button variant="outline" class="text-sm" onclick={handleLogout} disabled={authLoading}>Log out</Button>
             </div>
           {:else}
-            <Button class="w-full sm:w-auto" onclick={handleGoogleSignIn} disabled={authLoading}>
+            <Button class="w-full text-sm sm:w-auto" onclick={handleGoogleSignIn} disabled={authLoading}>
               {authLoading ? "Redirecting..." : "Continue with Google"}
             </Button>
           {/if}
@@ -268,7 +268,7 @@
       </div>
 
       {#if authError}
-        <Alert variant="destructive" class="mt-4">
+        <Alert variant="destructive" class="mt-4 text-sm">
           <AlertTitle>Authentication error</AlertTitle>
           <AlertDescription>{authError}</AlertDescription>
         </Alert>
@@ -277,7 +277,7 @@
   </header>
 
   <main class="mx-auto max-w-6xl px-4 py-6">
-    <Card class="border-border/80 bg-card shadow-none">
+    <Card class="border-border/80 bg-card text-sm shadow-none">
       <CardHeader class="gap-3">
         <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <CardTitle class="text-xl md:text-2xl">Items</CardTitle>
@@ -296,14 +296,14 @@
             <Button variant="ghost" class="text-sm" onclick={loadItems} disabled={itemsLoading}>Refresh</Button>
           </div>
         </div>
-        <CardDescription>Lost items stay prioritized, and your own submissions appear first.</CardDescription>
+        <CardDescription class="text-sm">Lost items stay prioritized, and your own submissions appear first.</CardDescription>
       </CardHeader>
       <Separator class="bg-border/80" />
       <CardContent class="pb-5">
         {#if itemsLoading}
           <p class="text-muted-foreground">Loading items...</p>
         {:else if itemsError}
-          <Alert variant="destructive">
+          <Alert variant="destructive" class="text-sm">
             <AlertTitle>Could not load items</AlertTitle>
             <AlertDescription>{itemsError}</AlertDescription>
           </Alert>
@@ -324,14 +324,14 @@
                 <CardContent class="border-border/80 flex-1 space-y-2">
                   <div class="flex items-start justify-between">
                     <h3 class="text-base font-semibold md:text-lg">{item.title}</h3>
-                    <Badge class={statusBadgeVariant(item.status)}>
+                    <Badge class={`${statusBadgeVariant(item.status)} text-sm`}>
                       {item.status}
                     </Badge>
                   </div>
                   <p class="text-sm text-muted-foreground">
                     {item.description}
                   </p>
-                  <div class="space-y-1 text-xs text-muted-foreground">
+                  <div class="space-y-1 text-sm text-muted-foreground">
                     <div>Category: {item.category}</div>
                     {#if item.location_found}
                       <div>Location: {item.location_found}</div>
@@ -351,7 +351,7 @@
                           value={item.status}
                           onValueChange={(value: string) => updateItemStatus(item.id, value as ItemStatus)}
                         >
-                          <SelectTrigger class="w-[140px] bg-background">
+                          <SelectTrigger class="w-[140px] bg-background text-sm">
                             {item.status}
                           </SelectTrigger>
                           <SelectContent>
@@ -362,12 +362,13 @@
                         </Select>
                       {/if}
                       {#if session && session.user.id === item.created_by}
-                        <Button href="/edit/{item.id}" variant="outline" size="sm">Edit</Button>
+                        <Button href="/edit/{item.id}" variant="outline" size="sm" class="text-sm">Edit</Button>
                       {/if}
                     </div>
                     <Button
                       variant="destructive"
                       size="sm"
+                      class="text-sm"
                       onclick={() => {
                         if (confirm("Are you sure you want to delete this item?")) {
                           deleteItem(item.id);

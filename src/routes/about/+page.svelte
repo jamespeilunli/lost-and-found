@@ -10,10 +10,10 @@
 </svelte:head>
 
 <div class="mx-auto max-w-3xl px-4 py-10">
-	<Card class="border-border/80 bg-card shadow-none">
+	<Card class="border-border/80 bg-card text-sm shadow-none">
 		<CardHeader>
 			<CardTitle class="text-2xl">About this app</CardTitle>
-			<CardDescription>Static content rendered with the same UI system as the rest of the frontend.</CardDescription>
+			<CardDescription class="text-sm">Static content rendered with the same UI system as the rest of the frontend.</CardDescription>
 		</CardHeader>
 		<Separator class="bg-border/80" />
 		<CardContent class="space-y-4 pt-6 text-sm text-muted-foreground">
