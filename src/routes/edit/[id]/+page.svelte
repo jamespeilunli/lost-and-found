@@ -1,316 +1,302 @@
 <script lang="ts">
-    import { onMount } from "svelte";
-    import { goto } from "$app/navigation";
-    import { page } from "$app/stores";
-    import { ArrowLeft } from "lucide-svelte";
-    import type { Session } from "@supabase/supabase-js";
-    import { supabase } from "$lib/supabaseClient";
-    import { toast } from "svelte-sonner";
+  import { onMount } from "svelte";
+  import { goto } from "$app/navigation";
+  import { page } from "$app/stores";
+  import { ArrowLeft } from "lucide-svelte";
+  import type { Session } from "@supabase/supabase-js";
+  import { supabase } from "$lib/supabaseClient";
+  import { toast } from "svelte-sonner";
+  import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
+  import { Button } from "$lib/components/ui/button";
+  import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardFooter,
+    CardHeader,
+    CardTitle,
+  } from "$lib/components/ui/card";
+  import { Input } from "$lib/components/ui/input";
+  import { Label } from "$lib/components/ui/label";
+  import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+  } from "$lib/components/ui/select";
+  import { Textarea } from "$lib/components/ui/textarea";
 
-    let session: Session | null = null;
-    const itemId = $page.params.id;
+  let session: Session | null = null;
+  const itemId = $page.params.id;
 
-    let title = "";
-    let description = "";
-    const CATEGORY_OPTIONS = [
-        "Accessories",
-        "Bags / Backpacks",
-        "Clothing",
-        "Electronics",
-        "ID / Cards",
-        "Keys",
-        "Wallet",
-        "Other",
-    ];
-    let selectedCategory = "";
-    let customCategory = "";
-    let locationFound = "";
-    let imageUrl: string | null = null;
+  let title = "";
+  let description = "";
+  const CATEGORY_OPTIONS = [
+    "Accessories",
+    "Bags / Backpacks",
+    "Clothing",
+    "Electronics",
+    "ID / Cards",
+    "Keys",
+    "Wallet",
+    "Other",
+  ];
+  let selectedCategory = "";
+  let customCategory = "";
+  let locationFound = "";
+  let imageUrl: string | null = null;
 
-    let imageFile: File | null = null;
-    let imageInput: HTMLInputElement | null = null;
+  let imageFile: File | null = null;
+  let imageInput: HTMLInputElement | null = null;
 
-    let formError = "";
-    let formLoading = false;
-    let pageLoading = true;
+  let formError = "";
+  let formLoading = false;
+  let pageLoading = true;
 
-    const imageBucket = "item-images";
+  const imageBucket = "item-images";
 
-    async function loadSessionAndItem() {
-        const { data: authData } = await supabase.auth.getSession();
-        session = authData.session;
-        if (!authData.session) {
-            await goto("/");
-            return;
-        }
-
-        const { data: itemData, error } = await supabase
-            .from("items")
-            .select("*")
-            .eq("id", itemId)
-            .single();
-
-        if (error || !itemData) {
-            toast.error("Item not found");
-            await goto("/");
-            return;
-        }
-
-        if (!session || itemData.created_by !== session.user.id) {
-            toast.error("You don't have permission to edit this item");
-            await goto("/");
-            return;
-        }
-
-        title = itemData.title;
-        description = itemData.description;
-        if (CATEGORY_OPTIONS.includes(itemData.category)) {
-            selectedCategory = itemData.category;
-            customCategory = "";
-        } else {
-            selectedCategory = "Other";
-            customCategory = itemData.category;
-        }
-        locationFound = itemData.location_found || "";
-        imageUrl = itemData.image_url;
-
-        pageLoading = false;
+  async function loadSessionAndItem() {
+    const { data: authData } = await supabase.auth.getSession();
+    session = authData.session;
+    if (!authData.session) {
+      await goto("/");
+      return;
     }
 
-    async function handleUpdateItem() {
-        if (!session?.user) {
-            formError = "Please sign in to update an item.";
-            return;
-        }
+    const { data: itemData, error } = await supabase
+      .from("items")
+      .select("*")
+      .eq("id", itemId)
+      .single();
 
-        const finalCategory = (
-            selectedCategory === "Other" ? customCategory : selectedCategory
-        ).trim();
+    if (error || !itemData) {
+      toast.error("Item not found");
+      await goto("/");
+      return;
+    }
 
-        if (!title.trim() || !description.trim() || !finalCategory) {
-            formError = "Title, description, and category are required.";
-            return;
-        }
+    if (!session || itemData.created_by !== session.user.id) {
+      toast.error("You don't have permission to edit this item");
+      await goto("/");
+      return;
+    }
 
-        formLoading = true;
-        formError = "";
+    title = itemData.title;
+    description = itemData.description;
+    if (CATEGORY_OPTIONS.includes(itemData.category)) {
+      selectedCategory = itemData.category;
+      customCategory = "";
+    } else {
+      selectedCategory = "Other";
+      customCategory = itemData.category;
+    }
+    locationFound = itemData.location_found || "";
+    imageUrl = itemData.image_url;
 
-        let newImageUrl: string | null = imageUrl;
+    pageLoading = false;
+  }
 
-        if (imageFile) {
-            const fileExt = imageFile.name.split(".").pop() || "jpg";
-            const filePath = `${session.user.id}/${crypto.randomUUID()}.${fileExt}`;
-            const { error: uploadError } = await supabase.storage
-                .from(imageBucket)
-                .upload(filePath, imageFile, {
-                    contentType: imageFile.type,
-                    upsert: false,
-                });
+  async function handleUpdateItem() {
+    if (!session?.user) {
+      formError = "Please sign in to update an item.";
+      return;
+    }
 
-            if (uploadError) {
-                formError = uploadError.message;
-                formLoading = false;
-                return;
-            }
+    const finalCategory = (
+      selectedCategory === "Other" ? customCategory : selectedCategory
+    ).trim();
 
-            const { data: imageData } = supabase.storage
-                .from(imageBucket)
-                .getPublicUrl(filePath);
-            newImageUrl = imageData.publicUrl;
-        }
+    if (!title.trim() || !description.trim() || !finalCategory) {
+      formError = "Title, description, and category are required.";
+      return;
+    }
 
-        const payload = {
-            title: title.trim(),
-            description: description.trim(),
-            category: finalCategory,
-            location_found: locationFound.trim() ? locationFound.trim() : null,
-            image_url: newImageUrl,
-        };
+    formLoading = true;
+    formError = "";
 
-        const { error } = await supabase
-            .from("items")
-            .update(payload)
-            .eq("id", itemId)
-            .eq("created_by", session.user.id)
-            .select()
-            .single();
+    let newImageUrl: string | null = imageUrl;
 
-        if (error) {
-            formError = "Failed to update item: " + error.message;
-        } else {
-            toast.success("Item updated successfully.");
-            await goto("/");
-        }
+    if (imageFile) {
+      const fileExt = imageFile.name.split(".").pop() || "jpg";
+      const filePath = `${session.user.id}/${crypto.randomUUID()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage
+        .from(imageBucket)
+        .upload(filePath, imageFile, {
+          contentType: imageFile.type,
+          upsert: false,
+        });
 
+      if (uploadError) {
+        formError = uploadError.message;
         formLoading = false;
+        return;
+      }
+
+      const { data: imageData } = supabase.storage
+        .from(imageBucket)
+        .getPublicUrl(filePath);
+      newImageUrl = imageData.publicUrl;
     }
 
-    onMount(() => {
-        loadSessionAndItem();
+    const payload = {
+      title: title.trim(),
+      description: description.trim(),
+      category: finalCategory,
+      location_found: locationFound.trim() ? locationFound.trim() : null,
+      image_url: newImageUrl,
+    };
 
-        const { data } = supabase.auth.onAuthStateChange(
-            (_event, nextSession) => {
-                session = nextSession;
-                if (!nextSession) {
-                    goto("/");
-                }
-            },
-        );
+    const { error } = await supabase
+      .from("items")
+      .update(payload)
+      .eq("id", itemId)
+      .eq("created_by", session.user.id)
+      .select()
+      .single();
 
-        return () => {
-            data.subscription.unsubscribe();
-        };
-    });
+    if (error) {
+      formError = "Failed to update item: " + error.message;
+    } else {
+      toast.success("Item updated successfully.");
+      await goto("/");
+    }
+
+    formLoading = false;
+  }
+
+  onMount(() => {
+    loadSessionAndItem();
+
+    const { data } = supabase.auth.onAuthStateChange(
+      (_event, nextSession) => {
+        session = nextSession;
+        if (!nextSession) {
+          goto("/");
+        }
+      },
+    );
+
+    return () => {
+      data.subscription.unsubscribe();
+    };
+  });
 </script>
 
 <svelte:head>
-    <title>Edit Item | Lost and Found</title>
+  <title>Edit Item | Lost and Found</title>
 </svelte:head>
 
-<div
-    class="min-h-screen bg-gray-100 dark:bg-[#181a1b] transition-colors duration-200"
->
-    <header
-        class="bg-white dark:bg-[#181a1b] border-b border-gray-200 dark:border-[#736b5e] transition-colors duration-200"
-    >
-        <div class="max-w-6xl mx-auto px-4 py-4 md:py-5">
-            <div
-                class="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
-            >
-                <div class="text-left">
-                    <a
-                        href="/"
-                        class="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-gray-300 dark:border-[#545b5e] text-gray-700 dark:text-[#b2aba1] text-sm hover:bg-gray-100 dark:hover:bg-[#2a2c2d] transition-colors"
-                    >
-                        <ArrowLeft size={18} />
-                        <span>Back to items</span>
-                    </a>
-                    <h1
-                        class="text-left text-2xl md:text-3xl font-bold text-gray-800 dark:text-[#e8e6e3] leading-tight mt-1 transition-colors"
-                    >
-                        Edit Item
-                    </h1>
-                </div>
-            </div>
+<div class="min-h-screen bg-background text-foreground transition-colors duration-200">
+  <header class="border-b bg-card/95 backdrop-blur-sm transition-colors duration-200">
+    <div class="mx-auto max-w-6xl px-4 py-4 md:py-5">
+      <div class="flex flex-col gap-4">
+        <div class="text-left">
+          <Button href="/" variant="outline" size="sm" class="gap-1 text-sm">
+            <ArrowLeft size={18} />
+            <span>Back to items</span>
+          </Button>
+          <h1 class="mt-2 text-left text-2xl font-bold leading-tight md:text-3xl">
+            Edit Item
+          </h1>
+          <p class="mt-1 text-sm text-muted-foreground">
+            Update the current report without changing its original status.
+          </p>
         </div>
-    </header>
+      </div>
+    </div>
+  </header>
 
-    <main class="max-w-4xl mx-auto px-4 py-6">
-        {#if pageLoading}
-            <p class="text-gray-500 dark:text-[#b2aba1]">Loading item...</p>
-        {:else}
-            <section
-                class="bg-white dark:bg-[#181a1b] border border-gray-200 dark:border-[#736b5e] p-6 md:p-8 rounded-lg shadow-sm transition-colors duration-200"
-            >
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div class="space-y-2">
-                        <label
-                            class="text-sm font-medium text-gray-700 dark:text-[#b2aba1] transition-colors"
-                            for="title-input">Title *</label
-                        >
-                        <input
-                            id="title-input"
-                            type="text"
-                            class="w-full px-3 py-2 border-2 border-gray-200 dark:border-[#545b5e] dark:bg-[#181a1b] dark:text-[#e8e6e3] rounded-lg focus:outline-none focus:border-yellow-500 dark:focus:border-yellow-400 transition-colors"
-                            bind:value={title}
-                        />
-                    </div>
-                    <div class="space-y-2">
-                        <label
-                            class="text-sm font-medium text-gray-700 dark:text-[#b2aba1] transition-colors"
-                            for="category-select">Category *</label
-                        >
-                        <select
-                            id="category-select"
-                            class="w-full px-3 py-2 border-2 border-gray-200 dark:border-[#545b5e] dark:bg-[#181a1b] dark:text-[#e8e6e3] rounded-lg focus:outline-none focus:border-yellow-500 dark:focus:border-yellow-400 transition-colors"
-                            bind:value={selectedCategory}
-                        >
-                            <option value="" disabled>Select a category</option>
-                            {#each CATEGORY_OPTIONS as option}
-                                <option value={option}>{option}</option>
-                            {/each}
-                        </select>
-                        {#if selectedCategory === "Other"}
-                            <input
-                                id="category-input"
-                                type="text"
-                                class="w-full px-3 py-2 mt-2 border-2 border-gray-200 dark:border-[#545b5e] dark:bg-[#181a1b] dark:text-[#e8e6e3] rounded-lg focus:outline-none focus:border-yellow-500 dark:focus:border-yellow-400 transition-colors"
-                                placeholder="Please specify"
-                                bind:value={customCategory}
-                            />
-                        {/if}
-                    </div>
-                    <div class="md:col-span-2 space-y-2">
-                        <label
-                            class="text-sm font-medium text-gray-700 dark:text-[#b2aba1] transition-colors"
-                            for="description-input">Description *</label
-                        >
-                        <textarea
-                            id="description-input"
-                            rows="3"
-                            class="w-full px-3 py-2 border-2 border-gray-200 dark:border-[#545b5e] dark:bg-[#181a1b] dark:text-[#e8e6e3] rounded-lg focus:outline-none focus:border-yellow-500 dark:focus:border-yellow-400 transition-colors"
-                            bind:value={description}
-                        ></textarea>
-                    </div>
-                    <div class="space-y-2">
-                        <label
-                            class="text-sm font-medium text-gray-700 dark:text-[#b2aba1] transition-colors"
-                            for="location-input">Location Found</label
-                        >
-                        <input
-                            id="location-input"
-                            type="text"
-                            class="w-full px-3 py-2 border-2 border-gray-200 dark:border-[#545b5e] dark:bg-[#181a1b] dark:text-[#e8e6e3] rounded-lg focus:outline-none focus:border-yellow-500 dark:focus:border-yellow-400 transition-colors"
-                            bind:value={locationFound}
-                        />
-                    </div>
-                    <div class="md:col-span-2 space-y-2">
-                        <label
-                            class="text-sm font-medium text-gray-700 dark:text-[#b2aba1] transition-colors"
-                            for="image-input">Update Image (Optional)</label
-                        >
-                        {#if imageUrl && !imageFile}
-                            <div class="mb-2">
-                                <img
-                                    src={imageUrl}
-                                    alt="Current item"
-                                    class="h-32 rounded-lg object-cover border border-gray-200 dark:border-[#545b5e]"
-                                />
-                            </div>
-                        {/if}
-                        <input
-                            bind:this={imageInput}
-                            id="image-input"
-                            type="file"
-                            accept="image/*"
-                            class="w-full px-3 py-2 border-2 border-gray-200 dark:border-[#545b5e] dark:bg-[#181a1b] dark:text-[#e8e6e3] file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-yellow-100 file:text-yellow-800 dark:file:bg-yellow-900/50 dark:file:text-yellow-400 hover:file:bg-yellow-200 dark:hover:file:bg-yellow-900/80 rounded-lg focus:outline-none focus:border-yellow-500 dark:focus:border-yellow-400 transition-colors"
-                            on:change={(event) => {
-                                const file = (event.target as HTMLInputElement)
-                                    .files?.[0];
-                                imageFile = file ?? null;
-                            }}
-                        />
-                    </div>
-                </div>
+  <main class="mx-auto max-w-4xl px-4 py-6">
+    {#if pageLoading}
+      <p class="text-muted-foreground">Loading item...</p>
+    {:else}
+      <Card class="border-border/80 bg-card text-sm shadow-none">
+        <CardHeader>
+          <CardTitle>Item details</CardTitle>
+          <CardDescription class="text-sm">
+            Adjust the report details and optionally replace the image.
+          </CardDescription>
+        </CardHeader>
+        <CardContent class="space-y-6">
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div class="space-y-2">
+              <Label class="text-sm" for="title-input">Title *</Label>
+              <Input class="text-sm" id="title-input" type="text" bind:value={title} />
+            </div>
 
-                {#if formError}
-                    <div
-                        class="mt-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded-lg transition-colors"
-                    >
-                        {formError}
-                    </div>
-                {/if}
+            <div class="space-y-2">
+              <Label class="text-sm" for="category-select-trigger">Category *</Label>
+              <Select type="single" bind:value={selectedCategory}>
+                <SelectTrigger
+                  id="category-select-trigger"
+                  class="w-full justify-between bg-background text-sm"
+                >
+                  {selectedCategory || "Select a category"}
+                </SelectTrigger>
+                <SelectContent>
+                  {#each CATEGORY_OPTIONS as option}
+                    <SelectItem value={option} label={option} />
+                  {/each}
+                </SelectContent>
+              </Select>
+              {#if selectedCategory === "Other"}
+                <Input
+                  id="category-input"
+                  type="text"
+                  class="text-sm"
+                  placeholder="Please specify"
+                  bind:value={customCategory}
+                />
+              {/if}
+            </div>
 
-                <div class="mt-6 flex flex-wrap gap-3">
-                    <button
-                        class="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 dark:bg-yellow-500 dark:hover:bg-yellow-400 text-black rounded-lg font-medium disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
-                        on:click={handleUpdateItem}
-                        disabled={formLoading || !session}
-                    >
-                        {formLoading ? "Saving..." : "Save Changes"}
-                    </button>
-                </div>
-            </section>
-        {/if}
-    </main>
+            <div class="space-y-2 md:col-span-2">
+              <Label class="text-sm" for="description-input">Description *</Label>
+              <Textarea class="text-sm" id="description-input" rows={4} bind:value={description} />
+            </div>
+
+            <div class="space-y-2">
+              <Label class="text-sm" for="location-input">Location Found</Label>
+              <Input class="text-sm" id="location-input" type="text" bind:value={locationFound} />
+            </div>
+
+            <div class="space-y-2 md:col-span-2">
+              <Label class="text-sm" for="image-input">Update Image</Label>
+              {#if imageUrl && !imageFile}
+                <img
+                  src={imageUrl}
+                  alt="Current item"
+                  class="h-32 border object-cover"
+                />
+              {/if}
+              <Input
+                bind:ref={imageInput}
+                id="image-input"
+                type="file"
+                accept="image/*"
+                class="bg-background text-sm"
+                onchange={(event: Event) => {
+                  const file = (event.currentTarget as HTMLInputElement).files?.[0];
+                  imageFile = file ?? null;
+                }}
+              />
+            </div>
+          </div>
+
+          {#if formError}
+            <Alert variant="destructive" class="text-sm">
+              <AlertTitle>Could not update item</AlertTitle>
+              <AlertDescription>{formError}</AlertDescription>
+            </Alert>
+          {/if}
+        </CardContent>
+
+        <CardFooter class="flex flex-wrap gap-3">
+          <Button class="text-sm" onclick={handleUpdateItem} disabled={formLoading || !session}>
+            {formLoading ? "Saving..." : "Save Changes"}
+          </Button>
+        </CardFooter>
+      </Card>
+    {/if}
+  </main>
 </div>
