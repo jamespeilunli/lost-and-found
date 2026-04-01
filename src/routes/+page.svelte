@@ -3,6 +3,7 @@
   import { Sun, Moon } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
+  import { toast } from "svelte-sonner";
 
   type ItemStatus = "lost" | "found" | "claimed";
   type UserRole = "user" | "librarian";
@@ -196,6 +197,7 @@
     }
 
     items = items.filter((item) => item.id !== itemId);
+    toast.success("Item deleted successfully.");
   }
 
   onMount(() => {
