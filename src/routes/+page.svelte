@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Sun, Moon, Plus } from "lucide-svelte";
+  import { Sun, Moon, Plus, Tag, MapPin, CalendarDays } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
   import { toast } from "svelte-sonner";
@@ -50,6 +50,16 @@
     }
 
     return "bg-primary/20 text-foreground uppercase dark:bg-primary/25";
+  }
+
+  function formatItemDate(value: string) {
+    return new Date(value).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
   }
 
   function toggleTheme() {
@@ -321,7 +331,7 @@
                   </div>
                 {/if}
 
-                <CardContent class="border-border/80 flex-1 space-y-2">
+                <CardContent class="border-border/80 flex-1 space-y-4">
                   <div class="flex items-start justify-between">
                     <h3 class="text-base font-semibold md:text-lg">{item.title}</h3>
                     <Badge class={`${statusBadgeVariant(item.status)} text-sm`}>
@@ -331,13 +341,32 @@
                   <p class="text-sm text-muted-foreground">
                     {item.description}
                   </p>
-                  <div class="space-y-1 text-sm text-muted-foreground">
-                    <div>Category: {item.category}</div>
+                  <div class="flex flex-wrap gap-2 text-sm text-muted-foreground">
+                    <div
+                      class="inline-flex max-w-full items-center gap-2 rounded-full bg-muted/55 px-2.5 py-1.5"
+                      title={`Category: ${item.category}`}
+                      aria-label={`Category: ${item.category}`}
+                    >
+                      <Tag size={15} class="shrink-0 text-primary" />
+                      <span class="truncate">{item.category}</span>
+                    </div>
                     {#if item.location_found}
-                      <div>Location: {item.location_found}</div>
+                      <div
+                        class="inline-flex max-w-full items-center gap-2 rounded-full bg-muted/55 px-2.5 py-1.5"
+                        title={`Location: ${item.location_found}`}
+                        aria-label={`Location: ${item.location_found}`}
+                      >
+                        <MapPin size={15} class="shrink-0 text-primary" />
+                        <span class="truncate">{item.location_found}</span>
+                      </div>
                     {/if}
-                    <div>
-                      Created: {new Date(item.created_at).toLocaleString()}
+                    <div
+                      class="inline-flex max-w-full items-center gap-2 rounded-full bg-muted/55 px-2.5 py-1.5"
+                      title={`Created: ${formatItemDate(item.created_at)}`}
+                      aria-label={`Created: ${formatItemDate(item.created_at)}`}
+                    >
+                      <CalendarDays size={15} class="shrink-0 text-primary" />
+                      <span>{formatItemDate(item.created_at)}</span>
                     </div>
                   </div>
                 </CardContent>
