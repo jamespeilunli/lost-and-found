@@ -57,11 +57,7 @@
       return;
     }
 
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", userId)
-      .maybeSingle();
+    const { data, error } = await supabase.from("profiles").select("role").eq("id", userId).maybeSingle();
 
     if (error) {
       userRole = null;
@@ -75,10 +71,7 @@
     itemsLoading = true;
     itemsError = "";
 
-    const { data, error } = await supabase
-      .from("items")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const { data, error } = await supabase.from("items").select("*").order("created_at", { ascending: false });
 
     if (error) {
       itemsError = error.message;
@@ -122,8 +115,7 @@
     authLoading = true;
     authError = "";
 
-    const redirectTo =
-      typeof window !== "undefined" ? `${window.location.origin}` : undefined;
+    const redirectTo = typeof window !== "undefined" ? `${window.location.origin}` : undefined;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },
@@ -165,9 +157,7 @@
       return;
     }
 
-    items = items.map((item) =>
-      item.id === itemId ? (data as ItemRow) : item,
-    );
+    items = items.map((item) => (item.id === itemId ? (data as ItemRow) : item));
   }
 
   async function deleteItem(itemId: string) {
@@ -178,11 +168,7 @@
       return;
     }
 
-    const { data, error } = await supabase
-      .from("items")
-      .delete()
-      .eq("id", itemId)
-      .select();
+    const { data, error } = await supabase.from("items").delete().eq("id", itemId).select();
 
     if (error) {
       itemsError = error.message;
@@ -190,9 +176,7 @@
     }
 
     if (!data || data.length === 0) {
-      alert(
-        "Failed to delete item. You may lack permission, or Row Level Security (RLS) is blocking the action.",
-      );
+      alert("Failed to delete item. You may lack permission, or Row Level Security (RLS) is blocking the action.");
       return;
     }
 
@@ -223,20 +207,14 @@
   <meta name="description" content="Track lost-and-found entries" />
 </svelte:head>
 
-<div
-  class="min-h-screen bg-gray-100 dark:bg-[#181a1b] transition-colors duration-200"
->
+<div class="min-h-screen bg-gray-100 dark:bg-[#181a1b] transition-colors duration-200">
   <header
     class="bg-white dark:bg-[#181a1b] border-b border-gray-200 dark:border-[#736b5e] transition-colors duration-200"
   >
     <div class="max-w-6xl mx-auto px-4 py-4 md:py-5">
-      <div
-        class="flex flex-col md:flex-row md:items-center md:justify-between gap-4"
-      >
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div class="text-left">
-          <h1
-            class="text-left text-2xl md:text-3xl font-bold text-gray-800 dark:text-[#e8e6e3] leading-tight"
-          >
+          <h1 class="text-left text-2xl md:text-3xl font-bold text-gray-800 dark:text-[#e8e6e3] leading-tight">
             Lost and Found
           </h1>
           <p class="text-sm text-gray-600 dark:text-[#b2aba1] mt-1">
@@ -258,9 +236,7 @@
           </button>
 
           {#if session}
-            <div
-              class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 md:justify-end"
-            >
+            <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 md:justify-end">
               <div class="text-sm text-gray-600 dark:text-[#b2aba1]">
                 Signed in as <strong>{session.user.email}</strong>
               </div>
@@ -290,9 +266,7 @@
       </div>
 
       {#if authError}
-        <div
-          class="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg"
-        >
+        <div class="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
           {authError}
         </div>
       {/if}
@@ -304,9 +278,7 @@
       class="bg-white dark:bg-[#181a1b] border border-gray-200 dark:border-[#736b5e] p-6 md:p-8 rounded-lg transition-colors duration-200"
     >
       <div class="flex items-center justify-between flex-wrap gap-2">
-        <h2 class="text-2xl font-bold text-gray-800 dark:text-[#e8e6e3]">
-          Items
-        </h2>
+        <h2 class="text-2xl font-bold text-gray-800 dark:text-[#e8e6e3]">Items</h2>
         <div class="flex items-center gap-4">
           {#if session}
             <a
@@ -330,7 +302,7 @@
             on:click={loadItems}
             disabled={itemsLoading}
           >
-            Refresh list
+            Refresh
           </button>
         </div>
       </div>
@@ -338,15 +310,11 @@
       {#if itemsLoading}
         <p class="mt-4 text-gray-500 dark:text-[#b2aba1]">Loading items...</p>
       {:else if itemsError}
-        <div
-          class="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg"
-        >
+        <div class="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg">
           {itemsError}
         </div>
       {:else if items.length === 0}
-        <p class="mt-4 text-gray-500 dark:text-[#b2aba1] italic">
-          No items yet. Add the first item.
-        </p>
+        <p class="mt-4 text-gray-500 dark:text-[#b2aba1] italic">No items yet. Add the first item.</p>
       {:else}
         <div class="mt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {#each items as item (item.id)}
@@ -354,11 +322,7 @@
               class="bg-white dark:bg-[#181a1b] border border-gray-200 dark:border-[#736b5e] overflow-hidden flex flex-col rounded-lg transition-colors duration-200"
             >
               {#if item.image_url}
-                <img
-                  src={item.image_url}
-                  alt={item.title}
-                  class="w-full h-44 object-cover"
-                />
+                <img src={item.image_url} alt={item.title} class="w-full h-44 object-cover" />
               {:else}
                 <div
                   class="w-full h-44 bg-gray-200 dark:bg-[#181a1b] flex items-center justify-center text-gray-500 dark:text-[#b2aba1] text-sm transition-colors duration-200"
@@ -368,14 +332,11 @@
               {/if}
               <div class="p-4 space-y-3 flex-1">
                 <div class="flex items-start justify-between gap-2">
-                  <h3
-                    class="text-lg font-semibold text-gray-800 dark:text-[#e8e6e3]"
-                  >
+                  <h3 class="text-lg font-semibold text-gray-800 dark:text-[#e8e6e3]">
                     {item.title}
                   </h3>
                   <span
-                    class="px-2 py-1 text-xs font-semibold uppercase rounded-full {item.status ===
-                    'found'
+                    class="px-2 py-1 text-xs font-semibold uppercase rounded-full {item.status === 'found'
                       ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400'
                       : item.status === 'claimed'
                         ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400'
@@ -387,9 +348,7 @@
                 <p class="text-sm text-gray-600 dark:text-[#b2aba1]">
                   {item.description}
                 </p>
-                <div
-                  class="text-xs text-gray-500 dark:text-[#b2aba1] space-y-1"
-                >
+                <div class="text-xs text-gray-500 dark:text-[#b2aba1] space-y-1">
                   <div>Category: {item.category}</div>
                   {#if item.location_found}
                     <div>Location: {item.location_found}</div>
@@ -410,11 +369,7 @@
                           class="py-1.5 pl-3 pr-8 border border-gray-200 dark:border-[#545b5e] rounded-md text-sm bg-white dark:bg-[#181a1b] text-gray-800 dark:text-[#e8e6e3] transition-colors"
                           value={item.status}
                           on:change={(event) =>
-                            updateItemStatus(
-                              item.id,
-                              (event.target as HTMLSelectElement)
-                                .value as ItemStatus,
-                            )}
+                            updateItemStatus(item.id, (event.target as HTMLSelectElement).value as ItemStatus)}
                         >
                           {#each statusOptions as option}
                             <option value={option}>{option}</option>
@@ -433,9 +388,7 @@
                     <button
                       class="px-3 py-1 text-sm bg-red-600 dark:bg-red-500/80 text-white rounded-md hover:bg-red-700 dark:hover:bg-red-500 transition-colors"
                       on:click={() => {
-                        if (
-                          confirm("Are you sure you want to delete this item?")
-                        ) {
+                        if (confirm("Are you sure you want to delete this item?")) {
                           deleteItem(item.id);
                         }
                       }}
