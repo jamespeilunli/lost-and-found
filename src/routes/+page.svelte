@@ -36,7 +36,12 @@
   let items: ItemRow[] = [];
   let itemsLoading = false;
   let itemsError = "";
+  let deletedItems: ItemRow[] = [];
+  let viewingDeleted = false;
   $: isLibrarian = userRole === "librarian";
+
+  // computed list to render (either normal items or deleted items)
+  $: displayedItems = viewingDeleted ? deletedItems : items;
 
   let isDark = false;
 
@@ -99,7 +104,13 @@
     itemsLoading = true;
     itemsError = "";
 
-    const { data, error } = await supabase.from("items").select("*").order("created_at", { ascending: false });
+  // Choose which table to read from based on the tab
+  const currentTable = viewingDeleted ? "deleted_items" : "items";
+
+    const { data, error } = await supabase
+      .from(currentTable)
+      .select("*")
+      .order("created_at", { ascending: false });
 
     if (error) {
       itemsError = error.message;
@@ -134,6 +145,26 @@
       });
 
       items = fetchedItems;
+    }
+    
+
+    itemsLoading = false;
+  }
+
+  async function loadDeletedItems() {
+    itemsLoading = true;
+    itemsError = "";
+
+    const { data, error } = await supabase
+      .from('deleted_items')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      itemsError = error.message;
+      deletedItems = [];
+    } else {
+      deletedItems = (data ?? []) as ItemRow[];
     }
 
     itemsLoading = false;
@@ -195,21 +226,55 @@
     if (!isLibrarian && !isOwner) {
       return;
     }
+    // Try to archive the item into `deleted_items` first so we keep a record.
+    try {
+      const toInsert = {
+        // copy all known item fields; keep id so deleted_items mirrors items
+        id: item?.id,
+        title: item?.title,
+        description: item?.description,
+        category: item?.category,
+        status: item?.status,
+        image_url: item?.image_url,
+        location_found: item?.location_found,
+        created_at: item?.created_at,
+        created_by: item?.created_by,
+      };
 
-    const { data, error } = await supabase.from("items").delete().eq("id", itemId).select();
+      const { data: insertData, error: insertError } = await supabase.from("deleted_items").insert([toInsert]).select();
 
-    if (error) {
-      itemsError = error.message;
-      return;
+      if (insertError) {
+        itemsError = insertError.message;
+        toast.error("Failed to archive deleted item: " + insertError.message);
+        return;
+      }
+
+      // Now delete from the original table
+      const { data, error } = await supabase.from("items").delete().eq("id", itemId).select();
+
+      if (error) {
+        itemsError = error.message;
+        toast.error("Deleted item was archived but removing the original failed: " + error.message);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        alert("Failed to delete item. You may lack permission, or Row Level Security (RLS) is blocking the action.");
+        return;
+      }
+
+      // Update local state
+      items = items.filter((item) => item.id !== itemId);
+      // If we're viewing deleted items, reload that list so the new row appears
+      if (viewingDeleted) {
+        await loadDeletedItems();
+      }
+
+      toast.success("Item deleted and archived successfully.");
+    } catch (err) {
+      itemsError = (err as Error).message;
+      toast.error("An unexpected error occurred: " + (err as Error).message);
     }
-
-    if (!data || data.length === 0) {
-      alert("Failed to delete item. You may lack permission, or Row Level Security (RLS) is blocking the action.");
-      return;
-    }
-
-    items = items.filter((item) => item.id !== itemId);
-    toast.success("Item deleted successfully.");
   }
 
   onMount(() => {
@@ -304,6 +369,24 @@
               </Button>
             {/if}
             <Button variant="ghost" class="text-sm" onclick={loadItems} disabled={itemsLoading}>Refresh</Button>
+
+            {#if isLibrarian}
+              <Button
+                variant={viewingDeleted ? "secondary" : "ghost"}
+                class="text-sm"
+                onclick={async () => {
+                  viewingDeleted = !viewingDeleted;
+                  if (viewingDeleted) {
+                    await loadDeletedItems();
+                  } else {
+                    await loadItems();
+                  }
+                }}
+                disabled={itemsLoading}
+              >
+                {viewingDeleted ? 'Viewing Deleted' : 'Deleted'}
+              </Button>
+            {/if}
           </div>
         </div>
         <CardDescription class="text-sm">Lost items stay prioritized, and your own submissions appear first.</CardDescription>
@@ -317,11 +400,11 @@
             <AlertTitle>Could not load items</AlertTitle>
             <AlertDescription>{itemsError}</AlertDescription>
           </Alert>
-        {:else if items.length === 0}
+        {:else if displayedItems.length === 0}
           <p class="italic text-muted-foreground">No items yet. Add the first item.</p>
         {:else}
           <div class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {#each items as item (item.id)}
+            {#each displayedItems as item (item.id)}
               <Card class="border-border/80 bg-card py-0">
                 {#if item.image_url}
                   <img src={item.image_url} alt={item.title} class="h-44 w-full object-cover" />
@@ -371,7 +454,7 @@
                   </div>
                 </CardContent>
 
-                {#if isLibrarian || (session && session.user.id === item.created_by)}
+                {#if !viewingDeleted && (isLibrarian || (session && session.user.id === item.created_by))}
                   <CardFooter class="border-border/80 flex items-center justify-between gap-2 bg-card px-4 py-4">
                     <div class="flex flex-wrap items-center gap-2">
                       {#if isLibrarian}
