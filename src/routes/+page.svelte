@@ -405,6 +405,7 @@
         {:else}
           <div class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
             {#each displayedItems as item (item.id)}
+              {@const showItemActions = !viewingDeleted && (isLibrarian || (session && session.user.id === item.created_by))}
               <Card class="border-border/80 bg-card py-0">
                 {#if item.image_url}
                   <img src={item.image_url} alt={item.title} class="h-44 w-full object-cover" />
@@ -414,7 +415,7 @@
                   </div>
                 {/if}
 
-                <CardContent class="border-border/80 flex-1 space-y-4">
+                <CardContent class={`border-border/80 flex-1 space-y-4 ${showItemActions ? "" : "pb-4"}`}>
                   <div class="flex items-start justify-between">
                     <h3 class="text-base font-semibold md:text-lg">{item.title}</h3>
                     <Badge class={`${statusBadgeVariant(item.status)} text-sm`}>
@@ -454,7 +455,7 @@
                   </div>
                 </CardContent>
 
-                {#if !viewingDeleted && (isLibrarian || (session && session.user.id === item.created_by))}
+                {#if showItemActions}
                   <CardFooter class="border-border/80 flex items-center justify-between gap-2 bg-card px-4 py-4">
                     <div class="flex flex-wrap items-center gap-2">
                       {#if isLibrarian}
