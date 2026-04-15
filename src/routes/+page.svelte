@@ -78,6 +78,17 @@
     }
   }
 
+  async function setViewingDeleted(nextValue: boolean) {
+    viewingDeleted = nextValue;
+
+    if (viewingDeleted) {
+      await loadDeletedItems();
+      return;
+    }
+
+    await loadItems();
+  }
+
   async function loadSession() {
     const { data } = await supabase.auth.getSession();
     session = data.session;
@@ -104,13 +115,10 @@
     itemsLoading = true;
     itemsError = "";
 
-  // Choose which table to read from based on the tab
-  const currentTable = viewingDeleted ? "deleted_items" : "items";
+    // Choose which table to read from based on the tab
+    const currentTable = viewingDeleted ? "deleted_items" : "items";
 
-    const { data, error } = await supabase
-      .from(currentTable)
-      .select("*")
-      .order("created_at", { ascending: false });
+    const { data, error } = await supabase.from(currentTable).select("*").order("created_at", { ascending: false });
 
     if (error) {
       itemsError = error.message;
@@ -146,7 +154,6 @@
 
       items = fetchedItems;
     }
-    
 
     itemsLoading = false;
   }
@@ -155,10 +162,7 @@
     itemsLoading = true;
     itemsError = "";
 
-    const { data, error } = await supabase
-      .from('deleted_items')
-      .select('*')
-      .order('created_at', { ascending: false });
+    const { data, error } = await supabase.from("deleted_items").select("*").order("created_at", { ascending: false });
 
     if (error) {
       itemsError = error.message;
@@ -371,25 +375,36 @@
             <Button variant="ghost" class="text-sm" onclick={loadItems} disabled={itemsLoading}>Refresh</Button>
 
             {#if isLibrarian}
-              <Button
-                variant={viewingDeleted ? "secondary" : "ghost"}
-                class="text-sm"
-                onclick={async () => {
-                  viewingDeleted = !viewingDeleted;
-                  if (viewingDeleted) {
-                    await loadDeletedItems();
-                  } else {
-                    await loadItems();
-                  }
-                }}
-                disabled={itemsLoading}
-              >
-                {viewingDeleted ? 'Viewing Deleted' : 'Deleted'}
-              </Button>
+              <div class="flex items-center overflow-hidden border border-border/80">
+                <Button
+                  variant={viewingDeleted ? "ghost" : "secondary"}
+                  class="rounded-none border-0 text-sm"
+                  onclick={() => setViewingDeleted(false)}
+                  disabled={itemsLoading && !viewingDeleted}
+                  aria-pressed={!viewingDeleted}
+                >
+                  Active items
+                </Button>
+                <Button
+                  variant={viewingDeleted ? "secondary" : "ghost"}
+                  class="rounded-none border-0 border-l border-border/80 text-sm"
+                  onclick={() => setViewingDeleted(true)}
+                  disabled={itemsLoading && viewingDeleted}
+                  aria-pressed={viewingDeleted}
+                >
+                  Deleted items
+                </Button>
+              </div>
             {/if}
           </div>
         </div>
-        <CardDescription class="text-sm">Lost items stay prioritized, and your own submissions appear first.</CardDescription>
+        <CardDescription class="text-sm">
+          {#if viewingDeleted}
+            Deleted item archive. Use "Active items" to return to the main list.
+          {:else}
+            Lost items stay prioritized, and your own submissions appear first.
+          {/if}
+        </CardDescription>
       </CardHeader>
       <Separator class="bg-border/80" />
       <CardContent class="pb-5">
@@ -405,7 +420,8 @@
         {:else}
           <div class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
             {#each displayedItems as item (item.id)}
-              {@const showItemActions = !viewingDeleted && (isLibrarian || (session && session.user.id === item.created_by))}
+              {@const showItemActions =
+                !viewingDeleted && (isLibrarian || (session && session.user.id === item.created_by))}
               <Card class="border-border/80 bg-card py-0">
                 {#if item.image_url}
                   <img src={item.image_url} alt={item.title} class="h-44 w-full object-cover" />
