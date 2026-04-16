@@ -217,10 +217,12 @@
 
     if (error) {
       itemsError = error.message;
+      toast.error("Could not update item status: " + error.message);
       return;
     }
 
     items = items.map((item) => (item.id === itemId ? (data as ItemRow) : item));
+    toast.success(`Item marked as ${nextStatus}.`);
   }
 
   async function deleteItem(itemId: string) {
@@ -300,8 +302,8 @@
 </script>
 
 <svelte:head>
-  <title>Lost and Found</title>
-  <meta name="description" content="Track lost-and-found entries" />
+  <title>Library Lost & Found</title>
+  <meta name="description" content="Browse and manage library lost and found records." />
 </svelte:head>
 
 <div class="min-h-screen bg-background text-foreground transition-colors duration-200">
@@ -309,8 +311,10 @@
     <div class="mx-auto max-w-6xl px-4 py-4 md:py-5">
       <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div class="text-left">
-          <h1 class="text-left text-2xl font-bold leading-tight md:text-3xl">Lost and Found</h1>
-          <p class="mt-1 text-sm text-muted-foreground">Add, track, and update community lost-and-found items.</p>
+          <h1 class="text-left text-2xl font-bold leading-tight md:text-3xl">Library Lost &amp; Found</h1>
+          <p class="mt-1 max-w-2xl text-sm text-muted-foreground">
+            Browse recently reported items, check their status, and submit a report if you recognize something.
+          </p>
         </div>
 
         <div class="flex items-center gap-3">
@@ -340,7 +344,7 @@
             </div>
           {:else}
             <Button class="w-full text-sm sm:w-auto" onclick={handleGoogleSignIn} disabled={authLoading}>
-              {authLoading ? "Redirecting..." : "Continue with Google"}
+              {authLoading ? "Redirecting..." : "Sign in to report an item"}
             </Button>
           {/if}
         </div>
@@ -356,20 +360,31 @@
   </header>
 
   <main class="mx-auto max-w-6xl px-4 py-6">
+    {#if isLibrarian}
+      <Alert class="mb-6 border-primary/40 bg-primary/10 text-sm">
+        <AlertTitle>Librarian View</AlertTitle>
+        <AlertDescription>
+          You can update item statuses, review archived records, and remove reports from the public list.
+        </AlertDescription>
+      </Alert>
+    {/if}
+
     <Card class="border-border/80 bg-card text-sm shadow-none">
       <CardHeader class="gap-3">
         <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <CardTitle class="text-xl md:text-2xl">Items</CardTitle>
+          <CardTitle class="text-xl md:text-2xl">
+            {viewingDeleted ? "Archived records" : "Browse reported items"}
+          </CardTitle>
           <div class="flex items-center gap-4">
             {#if session}
               <Button href="/submit" class="gap-1.5 text-sm">
                 <Plus size={16} />
-                <span>Add item</span>
+                <span>Report an item</span>
               </Button>
             {:else}
               <Button variant="secondary" class="gap-1.5 text-sm" disabled>
                 <Plus size={16} />
-                <span>Add item</span>
+                <span>Sign in to report</span>
               </Button>
             {/if}
             <Button variant="ghost" class="text-sm" onclick={loadItems} disabled={itemsLoading}>Refresh</Button>
@@ -383,7 +398,7 @@
                   disabled={itemsLoading && !viewingDeleted}
                   aria-pressed={!viewingDeleted}
                 >
-                  Active items
+                  Public list
                 </Button>
                 <Button
                   variant={viewingDeleted ? "secondary" : "ghost"}
@@ -392,7 +407,7 @@
                   disabled={itemsLoading && viewingDeleted}
                   aria-pressed={viewingDeleted}
                 >
-                  Deleted items
+                  Archived records
                 </Button>
               </div>
             {/if}
@@ -400,9 +415,9 @@
         </div>
         <CardDescription class="text-sm">
           {#if viewingDeleted}
-            Deleted item archive. Use "Active items" to return to the main list.
+            Archived records are visible to librarians only. Return to "Public list" to browse current reports.
           {:else}
-            Lost items stay prioritized, and your own submissions appear first.
+            Signed-out visitors can browse everything here. Lost items stay prioritized, and your own submissions appear first when you sign in.
           {/if}
         </CardDescription>
       </CardHeader>
@@ -416,7 +431,7 @@
             <AlertDescription>{itemsError}</AlertDescription>
           </Alert>
         {:else if displayedItems.length === 0}
-          <p class="italic text-muted-foreground">No items yet. Add the first item.</p>
+          <p class="italic text-muted-foreground">No reports yet. Add the first item report.</p>
         {:else}
           <div class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
             {#each displayedItems as item (item.id)}
@@ -499,12 +514,12 @@
                       size="sm"
                       class="text-sm"
                       onclick={() => {
-                        if (confirm("Are you sure you want to delete this item?")) {
+                        if (confirm("Archive and remove this item from the public list?")) {
                           deleteItem(item.id);
                         }
                       }}
                     >
-                      Delete
+                      {isLibrarian ? "Archive item" : "Delete"}
                     </Button>
                   </CardFooter>
                 {/if}
