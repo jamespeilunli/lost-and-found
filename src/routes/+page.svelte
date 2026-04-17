@@ -340,6 +340,9 @@
               <Badge variant="outline" class="w-fit border-primary/40 text-sm uppercase tracking-wide">
                 {userRole ?? "unknown"}
               </Badge>
+              {#if isLibrarian}
+                <Button href="/librarians" variant="outline" class="text-sm">Manage librarians</Button>
+              {/if}
               <Button variant="outline" class="text-sm" onclick={handleLogout} disabled={authLoading}>Log out</Button>
             </div>
           {:else}
