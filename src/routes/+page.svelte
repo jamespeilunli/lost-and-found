@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Sun, Moon, Plus, Tag, MapPin, CalendarDays } from "lucide-svelte";
+  import { Sun, Moon, Plus, Tag, MapPin, CalendarDays, EllipsisVertical, LogOut, Users } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
   import { toast } from "svelte-sonner";
@@ -44,6 +44,29 @@
   $: displayedItems = viewingDeleted ? deletedItems : items;
 
   let isDark = false;
+  let menuOpen = false;
+  let menuContainer: HTMLDivElement;
+
+  function toggleMenu() {
+    menuOpen = !menuOpen;
+  }
+
+  function closeMenu() {
+    menuOpen = false;
+  }
+
+  function handleWindowClick(event: MouseEvent) {
+    if (!menuOpen) return;
+    if (menuContainer && !menuContainer.contains(event.target as Node)) {
+      closeMenu();
+    }
+  }
+
+  function handleKeydown(event: KeyboardEvent) {
+    if (event.key === "Escape" && menuOpen) {
+      closeMenu();
+    }
+  }
 
   function statusBadgeVariant(status: ItemStatus) {
     if (status === "found") {
@@ -306,8 +329,10 @@
   <meta name="description" content="Browse and manage library lost and found records." />
 </svelte:head>
 
+<svelte:window on:click={handleWindowClick} on:keydown={handleKeydown} />
+
 <div class="min-h-screen bg-background text-foreground transition-colors duration-200">
-  <header class="border-b bg-card/95 backdrop-blur-sm transition-colors duration-200">
+  <header class="relative z-40 border-b bg-card/95 backdrop-blur-sm transition-colors duration-200">
     <div class="mx-auto max-w-6xl px-4 py-4 md:py-5">
       <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div class="text-left">
@@ -317,36 +342,88 @@
           </p>
         </div>
 
-        <div class="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="icon"
-            class="bg-background"
-            onclick={toggleTheme}
-            aria-label="Toggle dark mode"
-          >
-            {#if isDark}
-              <Sun size={20} />
-            {:else}
-              <Moon size={20} />
-            {/if}
-          </Button>
-
+        <div class="flex items-center gap-3 md:justify-end">
           {#if session}
-            <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 md:justify-end">
+            <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
               <div class="text-sm text-muted-foreground">
                 Signed in as <strong>{session.user.email}</strong>
               </div>
               <Badge variant="outline" class="w-fit border-primary/40 text-sm uppercase tracking-wide">
                 {userRole ?? "unknown"}
               </Badge>
-              <Button variant="outline" class="text-sm" onclick={handleLogout} disabled={authLoading}>Log out</Button>
             </div>
           {:else}
             <Button class="w-full text-sm sm:w-auto" onclick={handleGoogleSignIn} disabled={authLoading}>
               {authLoading ? "Redirecting..." : "Sign in to report an item"}
             </Button>
           {/if}
+
+          <div class="relative" bind:this={menuContainer}>
+            <Button
+              variant="outline"
+              size="icon"
+              class="bg-background"
+              onclick={toggleMenu}
+              aria-label="Open menu"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+            >
+              <EllipsisVertical size={20} />
+            </Button>
+
+            {#if menuOpen}
+              <div
+                role="menu"
+                class="absolute right-0 top-full z-50 mt-2 w-56 rounded-md border border-border/80 bg-popover text-popover-foreground shadow-md"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                  onclick={() => {
+                    toggleTheme();
+                    closeMenu();
+                  }}
+                >
+                  {#if isDark}
+                    <Sun size={16} />
+                    <span>Light mode</span>
+                  {:else}
+                    <Moon size={16} />
+                    <span>Dark mode</span>
+                  {/if}
+                </button>
+
+                {#if session && isLibrarian}
+                  <a
+                    href="/librarians"
+                    role="menuitem"
+                    class="flex w-full items-center gap-2 border-t border-border/80 px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                    onclick={closeMenu}
+                  >
+                    <Users size={16} />
+                    <span>Manage librarians</span>
+                  </a>
+                {/if}
+
+                {#if session}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    class="flex w-full items-center gap-2 border-t border-border/80 px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
+                    disabled={authLoading}
+                    onclick={() => {
+                      handleLogout();
+                      closeMenu();
+                    }}
+                  >
+                    <LogOut size={16} />
+                    <span>Log out</span>
+                  </button>
+                {/if}
+              </div>
+            {/if}
+          </div>
         </div>
       </div>
 
