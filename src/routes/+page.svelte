@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Sun, Moon, Plus, Tag, MapPin, CalendarDays, EllipsisVertical, LogOut, Users } from "lucide-svelte";
+  import { Sun, Moon, Plus, Tag, MapPin, CalendarDays, EllipsisVertical, LogOut, Users, Mail } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
   import { toast } from "svelte-sonner";
@@ -38,6 +38,7 @@
   let itemsError = "";
   let deletedItems: ItemRow[] = [];
   let viewingDeleted = false;
+  let submitterEmails: Record<string, string> = {};
   $: isLibrarian = userRole === "librarian";
 
   // computed list to render (either normal items or deleted items)
@@ -121,6 +122,7 @@
   async function loadUserRole(userId?: string) {
     if (!userId) {
       userRole = null;
+      submitterEmails = {};
       return;
     }
 
@@ -132,6 +134,22 @@
     }
 
     userRole = (data?.role as UserRole | null) ?? "user";
+
+    if (userRole === "librarian") {
+      await loadSubmitterEmails();
+    } else {
+      submitterEmails = {};
+    }
+  }
+
+  async function loadSubmitterEmails() {
+    const { data, error } = await supabase.rpc("list_profiles_with_email");
+    if (error || !data) return;
+    const map: Record<string, string> = {};
+    for (const row of data as { id: string; email: string | null }[]) {
+      if (row.email) map[row.id] = row.email;
+    }
+    submitterEmails = map;
   }
 
   async function loadItems() {
@@ -560,6 +578,17 @@
                       <CalendarDays size={15} class="shrink-0 text-primary" />
                       <span>{formatItemDate(item.created_at)}</span>
                     </div>
+                    {#if isLibrarian && submitterEmails[item.created_by]}
+                      <a
+                        href={`mailto:${submitterEmails[item.created_by]}?subject=${encodeURIComponent(`Re: ${item.title}`)}`}
+                        class="inline-flex max-w-full items-center gap-2 rounded-full bg-muted/55 px-2.5 py-1.5 hover:bg-muted"
+                        title={`Email submitter: ${submitterEmails[item.created_by]}`}
+                        aria-label={`Email submitter: ${submitterEmails[item.created_by]}`}
+                      >
+                        <Mail size={15} class="shrink-0 text-primary" />
+                        <span class="truncate">{submitterEmails[item.created_by]}</span>
+                      </a>
+                    {/if}
                   </div>
                 </CardContent>
 
