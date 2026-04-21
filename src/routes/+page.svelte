@@ -1,6 +1,21 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Sun, Moon, Plus, Tag, MapPin, CalendarDays, EllipsisVertical, LogOut, Users, Mail, Search } from "lucide-svelte";
+  import {
+    Sun,
+    Moon,
+    Plus,
+    Tag,
+    MapPin,
+    CalendarDays,
+    EllipsisVertical,
+    LogOut,
+    Users,
+    Mail,
+    Search,
+    LayoutGrid,
+    TableProperties,
+    RefreshCw,
+  } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
   import { toast } from "svelte-sonner";
@@ -625,7 +640,19 @@
               </div>
 
               <div class="flex flex-wrap items-center gap-2 lg:shrink-0">
-                <Button variant="ghost" class="text-sm" onclick={loadItems} disabled={itemsLoading}>Refresh</Button>
+                <div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="size-10 border border-border/70 bg-background text-muted-foreground hover:text-foreground"
+                    onclick={loadItems}
+                    disabled={itemsLoading}
+                    aria-label="Refresh items"
+                    title="Refresh"
+                  >
+                    <RefreshCw size={16} class={itemsLoading ? "animate-spin" : ""} />
+                  </Button>
+                </div>
                 {#if session}
                   <Button href="/submit" class="gap-1.5 text-sm">
                     <Plus size={16} />
@@ -670,23 +697,33 @@
 
                 <div class="space-y-1">
                   <p class="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Layout</p>
-                  <div class="flex w-fit items-center overflow-hidden border border-border/80 bg-background">
-                    <Button
-                      variant={viewMode === "cards" ? "secondary" : "ghost"}
-                      class="rounded-none border-0 text-sm"
-                      onclick={() => (viewMode = "cards")}
-                      aria-pressed={viewMode === "cards"}
-                    >
-                      Cards
-                    </Button>
-                    <Button
-                      variant={viewMode === "table" ? "secondary" : "ghost"}
-                      class="rounded-none border-0 border-l border-border/80 text-sm"
-                      onclick={() => (viewMode = "table")}
-                      aria-pressed={viewMode === "table"}
-                    >
-                      Table
-                    </Button>
+                  <div class="w-fit">
+                    <Select type="single" bind:value={viewMode}>
+                      <SelectTrigger
+                        class="h-10 min-w-0 border-border/80 bg-background px-2.5 text-sm"
+                        aria-label={`Choose layout, currently ${viewMode === "cards" ? "cards view" : "table view"}`}
+                      >
+                        {#if viewMode === "cards"}
+                          <LayoutGrid size={16} />
+                        {:else}
+                          <TableProperties size={16} />
+                        {/if}
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cards">
+                          <span class="flex items-center gap-2">
+                            <LayoutGrid size={15} />
+                            <span>Cards</span>
+                          </span>
+                        </SelectItem>
+                        <SelectItem value="table">
+                          <span class="flex items-center gap-2">
+                            <TableProperties size={15} />
+                            <span>Table</span>
+                          </span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </div>
