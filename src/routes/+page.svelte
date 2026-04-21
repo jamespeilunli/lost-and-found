@@ -483,9 +483,7 @@
       <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div class="text-left">
           <h1 class="text-left text-2xl font-bold leading-tight md:text-3xl">Library Lost &amp; Found</h1>
-          <p class="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Browse recently reported items, check their status, and submit a report if you recognize something.
-          </p>
+          <p class="mt-1 text-sm text-muted-foreground">Browse reported items and check their status.</p>
         </div>
 
         <div class="flex items-center gap-3 md:justify-end">
@@ -584,109 +582,125 @@
 
   <main class="mx-auto max-w-6xl px-4 py-6">
     {#if isLibrarian}
-      <Alert class="mb-6 border-primary/40 bg-primary/10 text-sm">
+      <Alert class="mb-6 border-primary/40 bg-primary/10 py-3 text-sm">
         <AlertTitle>Librarian View</AlertTitle>
         <AlertDescription>
-          You can update item statuses, review archived records, and remove reports from the public list.
+          You can update statuses, review archived records, and remove reports.
         </AlertDescription>
       </Alert>
     {/if}
 
     <Card class="border-border/80 bg-card text-sm shadow-none">
       <CardHeader class="gap-3">
-        <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <CardTitle class="text-xl md:text-2xl">
-            {viewingDeleted ? "Archived records" : "Browse reported items"}
-          </CardTitle>
-          <div class="flex items-center gap-4">
-            {#if session}
-              <Button href="/submit" class="gap-1.5 text-sm">
-                <Plus size={16} />
-                <span>Report an item</span>
-              </Button>
-            {:else}
-              <Button variant="secondary" class="gap-1.5 text-sm" disabled>
-                <Plus size={16} />
-                <span>Sign in to report</span>
-              </Button>
-            {/if}
-            <Button variant="ghost" class="text-sm" onclick={loadItems} disabled={itemsLoading}>Refresh</Button>
-
-            {#if isLibrarian}
-              <div class="flex items-center overflow-hidden border border-border/80">
-                <Button
-                  variant={viewingDeleted ? "ghost" : "secondary"}
-                  class="rounded-none border-0 text-sm"
-                  onclick={() => setViewingDeleted(false)}
-                  disabled={itemsLoading && !viewingDeleted}
-                  aria-pressed={!viewingDeleted}
-                >
-                  Public list
-                </Button>
-                <Button
-                  variant={viewingDeleted ? "secondary" : "ghost"}
-                  class="rounded-none border-0 border-l border-border/80 text-sm"
-                  onclick={() => setViewingDeleted(true)}
-                  disabled={itemsLoading && viewingDeleted}
-                  aria-pressed={viewingDeleted}
-                >
-                  Archived records
-                </Button>
-              </div>
+        <div class="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
+          <div class="space-y-1">
+            <CardTitle class="text-xl md:text-2xl">
+              {viewingDeleted ? "Archived records" : "Reported items"}
+            </CardTitle>
+            {#if searchQuery.trim()}
+              <CardDescription class="text-sm">
+                {filteredDisplayedItems.length} result{filteredDisplayedItems.length === 1 ? "" : "s"} for "{searchQuery.trim()}"
+              </CardDescription>
             {/if}
           </div>
         </div>
-        <CardDescription class="text-sm">
-          {#if viewingDeleted}
-            Archived records are visible to librarians only. Return to "Public list" to browse current reports.
-          {:else}
-            Signed-out visitors can browse everything here. Lost items stay prioritized, and your own submissions appear first when you sign in.
-          {/if}
-        </CardDescription>
       </CardHeader>
       <Separator class="bg-border/80" />
-      <CardContent class="pb-5">
-        <div class="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div class="flex w-full flex-col gap-3 md:max-w-3xl md:flex-row md:items-center">
-            <div class="relative w-full md:max-w-md">
-              <Search
-                size={16}
-                class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-              />
-              <Input
-                type="search"
-                bind:value={searchQuery}
-                class="h-10 pl-8 text-sm md:text-sm"
-                placeholder={viewingDeleted ? "Search archived items" : "Search by title, category, location, or description"}
-                aria-label={viewingDeleted ? "Search archived items" : "Search reported items"}
-              />
+      <CardContent class="px-0 pb-5">
+        <div class="px-4">
+          <div class="mb-5 flex flex-col gap-3">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center">
+              <div class="relative flex-1">
+                <Search
+                  size={16}
+                  class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+                />
+                <Input
+                  type="search"
+                  bind:value={searchQuery}
+                  class="h-10 bg-background pl-8 text-sm md:text-sm"
+                  placeholder={viewingDeleted ? "Search archived items" : "Search by title, category, location, or description"}
+                  aria-label={viewingDeleted ? "Search archived items" : "Search reported items"}
+                />
+              </div>
+
+              <div class="flex flex-wrap items-center gap-2 lg:shrink-0">
+                <Button variant="ghost" class="text-sm" onclick={loadItems} disabled={itemsLoading}>Refresh</Button>
+                {#if session}
+                  <Button href="/submit" class="gap-1.5 text-sm">
+                    <Plus size={16} />
+                    <span>Report an item</span>
+                  </Button>
+                {:else}
+                  <Button variant="secondary" class="gap-1.5 text-sm" disabled>
+                    <Plus size={16} />
+                    <span>Sign in to report</span>
+                  </Button>
+                {/if}
+              </div>
             </div>
-            <div class="flex w-fit items-center overflow-hidden border border-border/80">
-              <Button
-                variant={viewMode === "cards" ? "secondary" : "ghost"}
-                class="rounded-none border-0 text-sm"
-                onclick={() => (viewMode = "cards")}
-                aria-pressed={viewMode === "cards"}
-              >
-                Card view
-              </Button>
-              <Button
-                variant={viewMode === "table" ? "secondary" : "ghost"}
-                class="rounded-none border-0 border-l border-border/80 text-sm"
-                onclick={() => (viewMode = "table")}
-                aria-pressed={viewMode === "table"}
-              >
-                Table view
-              </Button>
+
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div class="flex flex-wrap gap-4">
+                {#if isLibrarian}
+                  <div class="space-y-1">
+                    <p class="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Scope</p>
+                    <div class="flex w-fit items-center overflow-hidden border border-border/80 bg-background">
+                      <Button
+                        variant={viewingDeleted ? "ghost" : "secondary"}
+                        class="rounded-none border-0 text-sm"
+                        onclick={() => setViewingDeleted(false)}
+                        disabled={itemsLoading && !viewingDeleted}
+                        aria-pressed={!viewingDeleted}
+                      >
+                        Public
+                      </Button>
+                      <Button
+                        variant={viewingDeleted ? "secondary" : "ghost"}
+                        class="rounded-none border-0 border-l border-border/80 text-sm"
+                        onclick={() => setViewingDeleted(true)}
+                        disabled={itemsLoading && viewingDeleted}
+                        aria-pressed={viewingDeleted}
+                      >
+                        Archived
+                      </Button>
+                    </div>
+                  </div>
+                {/if}
+
+                <div class="space-y-1">
+                  <p class="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Layout</p>
+                  <div class="flex w-fit items-center overflow-hidden border border-border/80 bg-background">
+                    <Button
+                      variant={viewMode === "cards" ? "secondary" : "ghost"}
+                      class="rounded-none border-0 text-sm"
+                      onclick={() => (viewMode = "cards")}
+                      aria-pressed={viewMode === "cards"}
+                    >
+                      Cards
+                    </Button>
+                    <Button
+                      variant={viewMode === "table" ? "secondary" : "ghost"}
+                      class="rounded-none border-0 border-l border-border/80 text-sm"
+                      onclick={() => (viewMode = "table")}
+                      aria-pressed={viewMode === "table"}
+                    >
+                      Table
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {#if viewingDeleted && isLibrarian}
+                <p class="text-xs text-muted-foreground lg:pt-6">Archived records are visible only to librarians.</p>
+              {/if}
             </div>
           </div>
-          {#if searchQuery.trim()}
-            <p class="text-sm text-muted-foreground">
-              {filteredDisplayedItems.length} result{filteredDisplayedItems.length === 1 ? "" : "s"} for "{searchQuery.trim()}"
-            </p>
-          {/if}
         </div>
 
+        <Separator class="bg-border/80" />
+
+        <div class="px-4 pt-5">
         {#if itemsLoading}
           <p class="text-muted-foreground">Loading items...</p>
         {:else if itemsError}
@@ -976,6 +990,7 @@
             </div>
           {/if}
         {/if}
+        </div>
       </CardContent>
     </Card>
   </main>
