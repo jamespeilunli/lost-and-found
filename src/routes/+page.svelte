@@ -14,6 +14,7 @@
 
   type ItemStatus = "lost" | "found" | "claimed";
   type UserRole = "user" | "librarian";
+  type ViewMode = "cards" | "table";
 
   type ItemRow = {
     id: string;
@@ -41,6 +42,9 @@
   let viewingDeleted = false;
   let submitterEmails: Record<string, string> = {};
   let searchQuery = "";
+  let viewMode: ViewMode = "cards";
+  let expandedTableDescriptions: Record<string, boolean> = {};
+  let expandedCardDescriptions: Record<string, boolean> = {};
   $: isLibrarian = userRole === "librarian";
 
   // computed list to render (either normal items or deleted items)
@@ -195,6 +199,24 @@
       .filter(({ score }) => score > 0)
       .sort((a, b) => b.score - a.score)
       .map(({ item }) => item);
+  }
+
+  function shouldShowDescriptionToggle(description: string, maxLength: number) {
+    return description.trim().length > maxLength;
+  }
+
+  function toggleTableDescription(itemId: string) {
+    expandedTableDescriptions = {
+      ...expandedTableDescriptions,
+      [itemId]: !expandedTableDescriptions[itemId],
+    };
+  }
+
+  function toggleCardDescription(itemId: string) {
+    expandedCardDescriptions = {
+      ...expandedCardDescriptions,
+      [itemId]: !expandedCardDescriptions[itemId],
+    };
   }
 
   function toggleTheme() {
@@ -625,18 +647,38 @@
       <Separator class="bg-border/80" />
       <CardContent class="pb-5">
         <div class="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div class="relative w-full md:max-w-md">
-            <Search
-              size={16}
-              class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-            />
-            <Input
-              type="search"
-              bind:value={searchQuery}
-              class="h-10 pl-8 text-sm md:text-sm"
-              placeholder={viewingDeleted ? "Search archived items" : "Search by title, category, location, or description"}
-              aria-label={viewingDeleted ? "Search archived items" : "Search reported items"}
-            />
+          <div class="flex w-full flex-col gap-3 md:max-w-3xl md:flex-row md:items-center">
+            <div class="relative w-full md:max-w-md">
+              <Search
+                size={16}
+                class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                type="search"
+                bind:value={searchQuery}
+                class="h-10 pl-8 text-sm md:text-sm"
+                placeholder={viewingDeleted ? "Search archived items" : "Search by title, category, location, or description"}
+                aria-label={viewingDeleted ? "Search archived items" : "Search reported items"}
+              />
+            </div>
+            <div class="flex w-fit items-center overflow-hidden border border-border/80">
+              <Button
+                variant={viewMode === "cards" ? "secondary" : "ghost"}
+                class="rounded-none border-0 text-sm"
+                onclick={() => (viewMode = "cards")}
+                aria-pressed={viewMode === "cards"}
+              >
+                Card view
+              </Button>
+              <Button
+                variant={viewMode === "table" ? "secondary" : "ghost"}
+                class="rounded-none border-0 border-l border-border/80 text-sm"
+                onclick={() => (viewMode = "table")}
+                aria-pressed={viewMode === "table"}
+              >
+                Table view
+              </Button>
+            </div>
           </div>
           {#if searchQuery.trim()}
             <p class="text-sm text-muted-foreground">
@@ -657,110 +699,282 @@
         {:else if filteredDisplayedItems.length === 0}
           <p class="italic text-muted-foreground">No items match that search.</p>
         {:else}
-          <div class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {#each filteredDisplayedItems as item (item.id)}
-              {@const showItemActions =
-                !viewingDeleted && (isLibrarian || (session && session.user.id === item.created_by))}
-              <Card class="border-border/80 bg-card py-0">
-                {#if item.image_url}
-                  <img src={item.image_url} alt={item.title} class="h-44 w-full object-cover" />
-                {:else}
-                  <div class="flex h-44 w-full items-center justify-center bg-muted text-sm text-muted-foreground">
-                    No image
-                  </div>
-                {/if}
-
-                <CardContent class={`border-border/80 flex-1 space-y-4 ${showItemActions ? "" : "pb-4"}`}>
-                  <div class="flex items-start justify-between">
-                    <h3 class="text-base font-semibold md:text-lg">{item.title}</h3>
-                    <Badge class={`${statusBadgeVariant(item.status)} text-sm`}>
-                      {item.status}
-                    </Badge>
-                  </div>
-                  <p class="text-sm text-muted-foreground">
-                    {item.description}
-                  </p>
-                  <div class="flex flex-wrap gap-2 text-sm text-muted-foreground">
-                    <div
-                      class="inline-flex max-w-full items-center gap-2 rounded-full bg-muted/55 px-2.5 py-1.5"
-                      title={`Category: ${item.category}`}
-                      aria-label={`Category: ${item.category}`}
-                    >
-                      <Tag size={15} class="shrink-0 text-primary" />
-                      <span class="truncate">{item.category}</span>
+          {#if viewMode === "cards"}
+            <div class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+              {#each filteredDisplayedItems as item (item.id)}
+                {@const showItemActions =
+                  !viewingDeleted && (isLibrarian || (session && session.user.id === item.created_by))}
+                <Card class="border-border/80 bg-card py-0">
+                  {#if item.image_url}
+                    <img src={item.image_url} alt={item.title} class="h-44 w-full object-cover" />
+                  {:else}
+                    <div class="flex h-44 w-full items-center justify-center bg-muted text-sm text-muted-foreground">
+                      No image
                     </div>
-                    {#if item.location_found}
+                  {/if}
+
+                  <CardContent class={`border-border/80 flex-1 space-y-4 ${showItemActions ? "" : "pb-4"}`}>
+                    <div class="flex items-start justify-between gap-3">
+                      <h3 class="text-base font-semibold md:text-lg">{item.title}</h3>
+                      <Badge class={`${statusBadgeVariant(item.status)} text-sm`}>
+                        {item.status}
+                      </Badge>
+                    </div>
+                    <div>
+                      <p class={`text-sm text-muted-foreground ${expandedCardDescriptions[item.id] ? "" : "line-clamp-4"}`}>
+                        {item.description}
+                      </p>
+                      {#if shouldShowDescriptionToggle(item.description, 220)}
+                        <button
+                          type="button"
+                          class="mt-1 text-xs font-medium text-primary hover:underline"
+                          onclick={() => toggleCardDescription(item.id)}
+                          aria-expanded={expandedCardDescriptions[item.id] ? "true" : "false"}
+                        >
+                          {expandedCardDescriptions[item.id] ? "Show less" : "Show more"}
+                        </button>
+                      {/if}
+                    </div>
+                    <div class="flex flex-wrap gap-2 text-sm text-muted-foreground">
                       <div
                         class="inline-flex max-w-full items-center gap-2 rounded-full bg-muted/55 px-2.5 py-1.5"
-                        title={`Location: ${item.location_found}`}
-                        aria-label={`Location: ${item.location_found}`}
+                        title={`Category: ${item.category}`}
+                        aria-label={`Category: ${item.category}`}
                       >
-                        <MapPin size={15} class="shrink-0 text-primary" />
-                        <span class="truncate">{item.location_found}</span>
+                        <Tag size={15} class="shrink-0 text-primary" />
+                        <span class="truncate">{item.category}</span>
                       </div>
-                    {/if}
-                    <div
-                      class="inline-flex max-w-full items-center gap-2 rounded-full bg-muted/55 px-2.5 py-1.5"
-                      title={`Created: ${formatItemDate(item.created_at)}`}
-                      aria-label={`Created: ${formatItemDate(item.created_at)}`}
-                    >
-                      <CalendarDays size={15} class="shrink-0 text-primary" />
-                      <span>{formatItemDate(item.created_at)}</span>
-                    </div>
-                    {#if isLibrarian && submitterEmails[item.created_by]}
-                      <a
-                        href={`mailto:${submitterEmails[item.created_by]}?subject=${encodeURIComponent(`Re: ${item.title}`)}`}
-                        class="inline-flex max-w-full items-center gap-2 rounded-full bg-muted/55 px-2.5 py-1.5 hover:bg-muted"
-                        title={`Email submitter: ${submitterEmails[item.created_by]}`}
-                        aria-label={`Email submitter: ${submitterEmails[item.created_by]}`}
-                      >
-                        <Mail size={15} class="shrink-0 text-primary" />
-                        <span class="truncate">{submitterEmails[item.created_by]}</span>
-                      </a>
-                    {/if}
-                  </div>
-                </CardContent>
-
-                {#if showItemActions}
-                  <CardFooter class="border-border/80 flex items-center justify-between gap-2 bg-card px-4 py-4">
-                    <div class="flex flex-wrap items-center gap-2">
-                      {#if isLibrarian}
-                        <Select
-                          type="single"
-                          value={item.status}
-                          onValueChange={(value: string) => updateItemStatus(item.id, value as ItemStatus)}
+                      {#if item.location_found}
+                        <div
+                          class="inline-flex max-w-full items-center gap-2 rounded-full bg-muted/55 px-2.5 py-1.5"
+                          title={`Location: ${item.location_found}`}
+                          aria-label={`Location: ${item.location_found}`}
                         >
-                          <SelectTrigger class="w-[140px] bg-background text-sm">
-                            {item.status}
-                          </SelectTrigger>
-                          <SelectContent>
-                            {#each statusOptions as option}
-                              <SelectItem value={option} label={option} />
-                            {/each}
-                          </SelectContent>
-                        </Select>
+                          <MapPin size={15} class="shrink-0 text-primary" />
+                          <span class="truncate">{item.location_found}</span>
+                        </div>
                       {/if}
-                      {#if session && session.user.id === item.created_by}
-                        <Button href="/edit/{item.id}" variant="outline" size="sm" class="text-sm">Edit</Button>
+                      <div
+                        class="inline-flex max-w-full items-center gap-2 rounded-full bg-muted/55 px-2.5 py-1.5"
+                        title={`Created: ${formatItemDate(item.created_at)}`}
+                        aria-label={`Created: ${formatItemDate(item.created_at)}`}
+                      >
+                        <CalendarDays size={15} class="shrink-0 text-primary" />
+                        <span>{formatItemDate(item.created_at)}</span>
+                      </div>
+                      {#if isLibrarian && submitterEmails[item.created_by]}
+                        <a
+                          href={`mailto:${submitterEmails[item.created_by]}?subject=${encodeURIComponent(`Re: ${item.title}`)}`}
+                          class="inline-flex max-w-full items-center gap-2 rounded-full bg-muted/55 px-2.5 py-1.5 hover:bg-muted"
+                          title={`Email submitter: ${submitterEmails[item.created_by]}`}
+                          aria-label={`Email submitter: ${submitterEmails[item.created_by]}`}
+                        >
+                          <Mail size={15} class="shrink-0 text-primary" />
+                          <span class="truncate">{submitterEmails[item.created_by]}</span>
+                        </a>
                       {/if}
                     </div>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      class="text-sm"
-                      onclick={() => {
-                        if (confirm("Archive and remove this item from the public list?")) {
-                          deleteItem(item.id);
-                        }
-                      }}
-                    >
-                      {isLibrarian ? "Archive item" : "Delete"}
-                    </Button>
-                  </CardFooter>
-                {/if}
-              </Card>
-            {/each}
-          </div>
+                  </CardContent>
+
+                  {#if showItemActions}
+                    <CardFooter class="border-border/80 flex items-center justify-between gap-2 bg-card px-4 py-4">
+                      <div class="flex flex-wrap items-center gap-2">
+                        {#if isLibrarian}
+                          <Select
+                            type="single"
+                            value={item.status}
+                            onValueChange={(value: string) => updateItemStatus(item.id, value as ItemStatus)}
+                          >
+                            <SelectTrigger class="w-[140px] bg-background text-sm">
+                              {item.status}
+                            </SelectTrigger>
+                            <SelectContent>
+                              {#each statusOptions as option}
+                                <SelectItem value={option} label={option} />
+                              {/each}
+                            </SelectContent>
+                          </Select>
+                        {/if}
+                        {#if session && session.user.id === item.created_by}
+                          <Button href="/edit/{item.id}" variant="outline" size="sm" class="text-sm">Edit</Button>
+                        {/if}
+                      </div>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        class="text-sm"
+                        onclick={() => {
+                          if (confirm("Archive and remove this item from the public list?")) {
+                            deleteItem(item.id);
+                          }
+                        }}
+                      >
+                        {isLibrarian ? "Archive item" : "Delete"}
+                      </Button>
+                    </CardFooter>
+                  {/if}
+                </Card>
+              {/each}
+            </div>
+          {:else}
+            <div class="overflow-x-auto rounded-md border border-border/80">
+              <table class="w-full min-w-[820px] border-collapse text-left text-sm table-fixed">
+                <colgroup>
+                  <col class="w-[42%]" />
+                  <col class="w-[11%]" />
+                  <col class="w-[11%]" />
+                  <col class="w-[14%]" />
+                  <col class="w-[14%]" />
+                  {#if isLibrarian}
+                    <col class="w-[14%]" />
+                  {/if}
+                  <col class="w-[8%]" />
+                </colgroup>
+                <thead class="bg-muted/40 text-muted-foreground">
+                  <tr>
+                    <th class="px-4 py-3 font-medium">Item</th>
+                    <th class="px-4 py-3 font-medium">Status</th>
+                    <th class="px-4 py-3 font-medium">Category</th>
+                    <th class="px-4 py-3 font-medium">Location</th>
+                    <th class="px-4 py-3 font-medium">Reported</th>
+                    {#if isLibrarian}
+                      <th class="px-4 py-3 font-medium">Submitter</th>
+                    {/if}
+                    <th class="px-4 py-3 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each filteredDisplayedItems as item (item.id)}
+                    {@const showItemActions =
+                      !viewingDeleted && (isLibrarian || (session && session.user.id === item.created_by))}
+                    <tr class="border-t border-border/80 align-top">
+                      <td class="px-4 py-4">
+                        <div class="flex items-start gap-3">
+                          {#if item.image_url}
+                            <img src={item.image_url} alt={item.title} class="h-12 w-12 rounded-sm object-cover shrink-0" />
+                          {:else}
+                            <div class="flex h-12 w-12 items-center justify-center rounded-sm bg-muted text-xs text-muted-foreground shrink-0">
+                              None
+                            </div>
+                          {/if}
+                          <div class="min-w-0 flex-1 space-y-1">
+                            <div class="truncate pr-2 font-medium">{item.title}</div>
+                            <div class="max-w-none">
+                              <p class={`text-muted-foreground ${expandedTableDescriptions[item.id] ? "" : "line-clamp-2"}`}>
+                                {item.description}
+                              </p>
+                              {#if shouldShowDescriptionToggle(item.description, 120)}
+                                <button
+                                  type="button"
+                                  class="mt-1 text-xs font-medium text-primary hover:underline"
+                                  onclick={() => toggleTableDescription(item.id)}
+                                  aria-expanded={expandedTableDescriptions[item.id] ? "true" : "false"}
+                                >
+                                  {expandedTableDescriptions[item.id] ? "Show less" : "Show more"}
+                                </button>
+                              {/if}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td class="px-4 py-4">
+                        <Badge class={`${statusBadgeVariant(item.status)} text-sm`}>
+                          {item.status}
+                        </Badge>
+                      </td>
+                      <td class="px-4 py-4">
+                        <div class="w-full">
+                          <span class="block truncate" title={item.category}>{item.category}</span>
+                        </div>
+                      </td>
+                      <td class="px-4 py-4">
+                        <div class="w-full">
+                          <span class="block truncate" title={item.location_found ?? "Unknown"}>{item.location_found ?? "Unknown"}</span>
+                        </div>
+                      </td>
+                      <td class="px-4 py-4 whitespace-nowrap">
+                        <div class="w-full">
+                          <span class="block truncate" title={formatItemDate(item.created_at)}>{formatItemDate(item.created_at)}</span>
+                        </div>
+                      </td>
+                      {#if isLibrarian}
+                        <td class="px-4 py-4">
+                          {#if submitterEmails[item.created_by]}
+                            <div class="w-full">
+                              <a
+                                href={`mailto:${submitterEmails[item.created_by]}?subject=${encodeURIComponent(`Re: ${item.title}`)}`}
+                                class="inline-flex w-full min-w-0 items-center gap-2 text-primary hover:underline"
+                                title={submitterEmails[item.created_by]}
+                              >
+                                <Mail size={15} class="shrink-0" />
+                                <span class="block truncate">{submitterEmails[item.created_by]}</span>
+                              </a>
+                            </div>
+                          {:else}
+                            <span class="text-muted-foreground">Unavailable</span>
+                          {/if}
+                        </td>
+                      {/if}
+                      <td class="px-4 py-4">
+                        {#if showItemActions}
+                          <details class="relative">
+                            <summary
+                              class="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-sm border border-border/80 bg-background text-muted-foreground hover:bg-muted [&::-webkit-details-marker]:hidden"
+                              aria-label={`Open actions for ${item.title}`}
+                            >
+                              <EllipsisVertical size={16} />
+                            </summary>
+                            <div class="absolute right-0 top-10 z-20 w-56 rounded-md border border-border/80 bg-popover p-2 shadow-md">
+                              {#if isLibrarian}
+                                <div class="space-y-1">
+                                  <p class="px-2 pt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                    Status
+                                  </p>
+                                  <Select
+                                    type="single"
+                                    value={item.status}
+                                    onValueChange={(value: string) => updateItemStatus(item.id, value as ItemStatus)}
+                                  >
+                                    <SelectTrigger class="w-full bg-background text-sm">
+                                      {item.status}
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {#each statusOptions as option}
+                                        <SelectItem value={option} label={option} />
+                                      {/each}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              {/if}
+                              <div class="mt-2 flex flex-col gap-1">
+                                {#if session && session.user.id === item.created_by}
+                                  <Button href="/edit/{item.id}" variant="outline" size="sm" class="justify-start text-sm">Edit item</Button>
+                                {/if}
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  class="justify-start text-sm"
+                                  onclick={() => {
+                                    if (confirm("Archive and remove this item from the public list?")) {
+                                      deleteItem(item.id);
+                                    }
+                                  }}
+                                >
+                                  {isLibrarian ? "Archive item" : "Delete item"}
+                                </Button>
+                              </div>
+                            </div>
+                          </details>
+                        {:else}
+                          <span class="text-muted-foreground">No actions</span>
+                        {/if}
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          {/if}
         {/if}
       </CardContent>
     </Card>
