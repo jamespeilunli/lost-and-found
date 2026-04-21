@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Sun, Moon, Plus, Tag, MapPin, CalendarDays, EllipsisVertical, LogOut, Users, Mail } from "lucide-svelte";
+  import { Sun, Moon, Plus, Tag, MapPin, CalendarDays, EllipsisVertical, LogOut, Users, Mail, Search } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
   import { toast } from "svelte-sonner";
@@ -8,6 +8,7 @@
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
   import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "$lib/components/ui/card";
+  import { Input } from "$lib/components/ui/input";
   import { Select, SelectContent, SelectItem, SelectTrigger } from "$lib/components/ui/select";
   import { Separator } from "$lib/components/ui/separator";
 
@@ -39,10 +40,12 @@
   let deletedItems: ItemRow[] = [];
   let viewingDeleted = false;
   let submitterEmails: Record<string, string> = {};
+  let searchQuery = "";
   $: isLibrarian = userRole === "librarian";
 
   // computed list to render (either normal items or deleted items)
   $: displayedItems = viewingDeleted ? deletedItems : items;
+  $: filteredDisplayedItems = getFilteredItems(displayedItems, searchQuery);
 
   let isDark = false;
   let menuOpen = false;
@@ -89,6 +92,109 @@
       hour: "numeric",
       minute: "2-digit",
     });
+  }
+
+  function normalizeSearchValue(value: string | null | undefined) {
+    return (value ?? "")
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  }
+
+  function scoreFuzzyMatch(queryToken: string, searchText: string) {
+    if (!queryToken || !searchText) {
+      return 0;
+    }
+
+    const directIndex = searchText.indexOf(queryToken);
+    if (directIndex !== -1) {
+      const startsWord = directIndex === 0 || searchText[directIndex - 1] === " ";
+      return 140 - directIndex * 2 - (searchText.length - queryToken.length) + (startsWord ? 20 : 0);
+    }
+
+    let score = 0;
+    let previousIndex = -1;
+    let streak = 0;
+
+    for (const character of queryToken) {
+      const nextIndex = searchText.indexOf(character, previousIndex + 1);
+      if (nextIndex === -1) {
+        return 0;
+      }
+
+      const isConsecutive = nextIndex === previousIndex + 1;
+      streak = isConsecutive ? streak + 1 : 0;
+      score += 10 + streak * 8;
+
+      if (nextIndex === 0 || searchText[nextIndex - 1] === " ") {
+        score += 12;
+      }
+
+      if (previousIndex !== -1) {
+        score -= Math.min(nextIndex - previousIndex - 1, 6);
+      }
+
+      previousIndex = nextIndex;
+    }
+
+    return Math.max(score - (searchText.length - queryToken.length), 1);
+  }
+
+  function getItemSearchScore(item: ItemRow, query: string) {
+    const tokens = normalizeSearchValue(query).split(" ").filter(Boolean);
+    if (tokens.length === 0) {
+      return 1;
+    }
+
+    const searchableFields = [
+      { value: item.title, weight: 5 },
+      { value: item.category, weight: 3 },
+      { value: item.location_found, weight: 3 },
+      { value: item.description, weight: 2 },
+      { value: item.status, weight: 1 },
+    ].map(({ value, weight }) => ({
+      text: normalizeSearchValue(value),
+      weight,
+    }));
+
+    let totalScore = 0;
+
+    for (const token of tokens) {
+      let bestScore = 0;
+
+      for (const field of searchableFields) {
+        const score = scoreFuzzyMatch(token, field.text) * field.weight;
+        if (score > bestScore) {
+          bestScore = score;
+        }
+      }
+
+      if (bestScore === 0) {
+        return 0;
+      }
+
+      totalScore += bestScore;
+    }
+
+    return totalScore;
+  }
+
+  function getFilteredItems(list: ItemRow[], query: string) {
+    const normalizedQuery = normalizeSearchValue(query);
+    if (!normalizedQuery) {
+      return list;
+    }
+
+    return list
+      .map((item) => ({
+        item,
+        score: getItemSearchScore(item, normalizedQuery),
+      }))
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map(({ item }) => item);
   }
 
   function toggleTheme() {
@@ -518,6 +624,27 @@
       </CardHeader>
       <Separator class="bg-border/80" />
       <CardContent class="pb-5">
+        <div class="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div class="relative w-full md:max-w-md">
+            <Search
+              size={16}
+              class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              type="search"
+              bind:value={searchQuery}
+              class="h-10 pl-8 text-sm md:text-sm"
+              placeholder={viewingDeleted ? "Search archived items" : "Search by title, category, location, or description"}
+              aria-label={viewingDeleted ? "Search archived items" : "Search reported items"}
+            />
+          </div>
+          {#if searchQuery.trim()}
+            <p class="text-sm text-muted-foreground">
+              {filteredDisplayedItems.length} result{filteredDisplayedItems.length === 1 ? "" : "s"} for "{searchQuery.trim()}"
+            </p>
+          {/if}
+        </div>
+
         {#if itemsLoading}
           <p class="text-muted-foreground">Loading items...</p>
         {:else if itemsError}
@@ -527,9 +654,11 @@
           </Alert>
         {:else if displayedItems.length === 0}
           <p class="italic text-muted-foreground">No reports yet. Add the first item report.</p>
+        {:else if filteredDisplayedItems.length === 0}
+          <p class="italic text-muted-foreground">No items match that search.</p>
         {:else}
           <div class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {#each displayedItems as item (item.id)}
+            {#each filteredDisplayedItems as item (item.id)}
               {@const showItemActions =
                 !viewingDeleted && (isLibrarian || (session && session.user.id === item.created_by))}
               <Card class="border-border/80 bg-card py-0">
