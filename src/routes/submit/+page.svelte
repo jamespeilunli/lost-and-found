@@ -163,12 +163,12 @@
 
 <div class="min-h-screen bg-background text-foreground transition-colors duration-200">
   <header class="border-b bg-card/95 backdrop-blur-sm transition-colors duration-200">
-    <div class="mx-auto max-w-6xl px-4 py-4 md:py-5">
+    <div class="mx-auto max-w-4xl px-4 py-4 md:py-5">
       <div class="flex flex-col gap-4">
         <div class="text-left">
           <Button href="/" variant="outline" size="sm" class="gap-1 text-sm">
             <ArrowLeft size={18} />
-            <span>Back to items</span>
+            <span>Back</span>
           </Button>
           <h1 class="mt-2 text-left text-2xl font-bold leading-tight md:text-3xl">
             Add Item

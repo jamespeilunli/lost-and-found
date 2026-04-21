@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { goto } from "$app/navigation";
   import { ArrowLeft, Search, ShieldCheck, ShieldOff } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
@@ -117,17 +116,17 @@
 <div class="min-h-screen bg-background text-foreground transition-colors duration-200">
   <header class="border-b bg-card/95 backdrop-blur-sm transition-colors duration-200">
     <div class="mx-auto max-w-4xl px-4 py-4 md:py-5">
-      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 class="text-2xl font-bold leading-tight md:text-3xl">Manage librarians</h1>
+      <div class="flex flex-col gap-4">
+        <div class="text-left">
+          <Button href="/" variant="outline" size="sm" class="gap-1 text-sm">
+            <ArrowLeft size={18} />
+            <span>Back</span>
+          </Button>
+          <h1 class="mt-2 text-2xl font-bold leading-tight md:text-3xl">Manage librarians</h1>
           <p class="mt-1 text-sm text-muted-foreground">
             Promote users to librarians or remove librarian access.
           </p>
         </div>
-        <Button variant="outline" class="gap-1.5 text-sm w-fit" onclick={() => goto("/")}>
-          <ArrowLeft size={16} />
-          <span>Back</span>
-        </Button>
       </div>
     </div>
   </header>
