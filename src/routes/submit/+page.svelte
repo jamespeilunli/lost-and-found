@@ -157,8 +157,8 @@
 </script>
 
 <svelte:head>
-  <title>Add Item | Lost and Found</title>
-  <meta name="description" content="Add a lost-and-found item" />
+  <title>Report a lost item | Lost and Found</title>
+  <meta name="description" content="Report an item you've lost" />
 </svelte:head>
 
 <div class="min-h-screen bg-background text-foreground transition-colors duration-200">
@@ -171,10 +171,10 @@
             <span>Back</span>
           </Button>
           <h1 class="mt-2 text-left text-2xl font-bold leading-tight md:text-3xl">
-            Add Item
+            Report a lost item
           </h1>
           <p class="mt-1 text-sm text-muted-foreground">
-            Submit a new report with enough detail for someone else to recognize it.
+            Describe what you lost so a librarian can match it when someone turns it in.
           </p>
         </div>
       </div>
@@ -240,12 +240,12 @@
           </div>
 
           <div class="space-y-2">
-            <Label class="text-sm" for="location-input">Location Found</Label>
+            <Label class="text-sm" for="location-input">Last seen location</Label>
             <Input
               id="location-input"
               type="text"
               class="text-sm"
-              placeholder="Library entrance"
+              placeholder="e.g. Library, 2nd floor study room"
               bind:value={locationFound}
             />
           </div>
@@ -275,7 +275,7 @@
       </CardContent>
       <CardFooter class="flex flex-wrap gap-3">
         <Button class="text-sm" onclick={handleSubmitItem} disabled={formLoading || !session}>
-          {formLoading ? "Adding..." : "Add item"}
+          {formLoading ? "Submitting..." : "Report lost item"}
         </Button>
         <Button variant="outline" class="text-sm" onclick={clearForm}>
           Clear

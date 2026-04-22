@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
-  import { page } from "$app/stores";
   import { ArrowLeft } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
@@ -26,8 +25,11 @@
   } from "$lib/components/ui/select";
   import { Textarea } from "$lib/components/ui/textarea";
 
+  type UserRole = "user" | "librarian";
+
   let session: Session | null = null;
-  const itemId = $page.params.id;
+  let userRole: UserRole | null = null;
+  let authChecked = false;
 
   let title = "";
   let description = "";
@@ -44,79 +46,45 @@
   let selectedCategory = "";
   let customCategory = "";
   let locationFound = "";
-  let status = "lost";
-  let imageUrl: string | null = null;
-
-  $: locationLabel = status === "lost" ? "Last seen location" : "Location found";
-  $: headingText =
-    status === "lost"
-      ? "Edit lost item report"
-      : status === "found"
-        ? "Edit found item"
-        : status === "claimed"
-          ? "Edit claimed item"
-          : "Edit item";
-  $: subtitleText =
-    status === "lost"
-      ? "Update the details of the item you reported lost."
-      : status === "found"
-        ? "Update the details of this turned-in item."
-        : "Update this item's details without changing its status.";
-
   let imageFile: File | null = null;
   let imageInput: HTMLInputElement | null = null;
 
   let formError = "";
   let formLoading = false;
-  let pageLoading = true;
 
+  const defaultStatus = "found";
   const imageBucket = "item-images";
 
-  async function loadSessionAndItem() {
-    const { data: authData } = await supabase.auth.getSession();
-    session = authData.session;
-    if (!authData.session) {
+  $: isLibrarian = userRole === "librarian";
+
+  async function loadSession() {
+    const { data } = await supabase.auth.getSession();
+    session = data.session;
+
+    if (!session) {
+      userRole = null;
+      authChecked = true;
       await goto("/");
       return;
     }
 
-    const { data: itemData, error } = await supabase
-      .from("items")
-      .select("*")
-      .eq("id", itemId)
-      .single();
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", session.user.id)
+      .maybeSingle();
 
-    if (error || !itemData) {
-      toast.error("Item not found");
-      await goto("/");
-      return;
-    }
-
-    if (!session || itemData.created_by !== session.user.id) {
-      toast.error("You don't have permission to edit this item");
-      await goto("/");
-      return;
-    }
-
-    title = itemData.title;
-    description = itemData.description;
-    if (CATEGORY_OPTIONS.includes(itemData.category)) {
-      selectedCategory = itemData.category;
-      customCategory = "";
-    } else {
-      selectedCategory = "Other";
-      customCategory = itemData.category;
-    }
-    locationFound = itemData.location_found || "";
-    status = itemData.status || "lost";
-    imageUrl = itemData.image_url;
-
-    pageLoading = false;
+    userRole = (profile?.role as UserRole | null) ?? "user";
+    authChecked = true;
   }
 
-  async function handleUpdateItem() {
+  async function handleSubmitItem() {
     if (!session?.user) {
-      formError = "Please sign in to update an item.";
+      formError = "Please sign in to log an item.";
+      return;
+    }
+    if (!isLibrarian) {
+      formError = "Only librarians can log found items.";
       return;
     }
 
@@ -132,7 +100,7 @@
     formLoading = true;
     formError = "";
 
-    let newImageUrl: string | null = imageUrl;
+    let imageUrl: string | null = null;
 
     if (imageFile) {
       const fileExt = imageFile.name.split(".").pop() || "jpg";
@@ -153,46 +121,57 @@
       const { data: imageData } = supabase.storage
         .from(imageBucket)
         .getPublicUrl(filePath);
-      newImageUrl = imageData.publicUrl;
+      imageUrl = imageData.publicUrl;
     }
 
     const payload = {
       title: title.trim(),
       description: description.trim(),
       category: finalCategory,
+      status: defaultStatus,
+      image_url: imageUrl,
       location_found: locationFound.trim() ? locationFound.trim() : null,
-      image_url: newImageUrl,
+      created_by: session.user.id,
     };
 
     const { error } = await supabase
       .from("items")
-      .update(payload)
-      .eq("id", itemId)
-      .eq("created_by", session.user.id)
+      .insert([payload])
       .select()
       .single();
 
     if (error) {
-      formError = "Failed to update item: " + error.message;
+      formError = "Failed to log item: " + error.message;
     } else {
-      toast.success("Item updated successfully.");
+      toast.success("Found item logged.");
       await goto("/");
     }
 
     formLoading = false;
   }
 
-  onMount(() => {
-    loadSessionAndItem();
+  function clearForm() {
+    title = "";
+    description = "";
+    selectedCategory = "";
+    customCategory = "";
+    locationFound = "";
+    imageFile = null;
+    if (imageInput) {
+      imageInput.value = "";
+    }
+    formError = "";
+  }
 
-    const { data } = supabase.auth.onAuthStateChange(
-      (_event, nextSession) => {
-        session = nextSession;
-        if (!nextSession) {
-          goto("/");
-        }
-      },
-    );
+  onMount(() => {
+    loadSession();
+
+    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      session = nextSession;
+      if (!nextSession) {
+        goto("/");
+      }
+    });
 
     return () => {
       data.subscription.unsubscribe();
@@ -201,23 +180,24 @@
 </script>
 
 <svelte:head>
-  <title>{headingText} | Lost and Found</title>
+  <title>Log a found item | Lost and Found</title>
+  <meta name="description" content="Log an item that's been turned in" />
 </svelte:head>
 
 <div class="min-h-screen bg-background text-foreground transition-colors duration-200">
   <header class="border-b bg-card/95 backdrop-blur-sm transition-colors duration-200">
-    <div class="mx-auto max-w-6xl px-4 py-4 md:py-5">
+    <div class="mx-auto max-w-4xl px-4 py-4 md:py-5">
       <div class="flex flex-col gap-4">
         <div class="text-left">
           <Button href="/" variant="outline" size="sm" class="gap-1 text-sm">
             <ArrowLeft size={18} />
-            <span>Back to items</span>
+            <span>Back</span>
           </Button>
           <h1 class="mt-2 text-left text-2xl font-bold leading-tight md:text-3xl">
-            {headingText}
+            Log a found item
           </h1>
           <p class="mt-1 text-sm text-muted-foreground">
-            {subtitleText}
+            Record an item that's been turned in, so its owner can claim it.
           </p>
         </div>
       </div>
@@ -225,21 +205,37 @@
   </header>
 
   <main class="mx-auto max-w-4xl px-4 py-6">
-    {#if pageLoading}
-      <p class="text-muted-foreground">Loading item...</p>
+    {#if !authChecked}
+      <p class="text-muted-foreground">Loading...</p>
+    {:else if !session}
+      <Alert variant="destructive" class="text-sm">
+        <AlertTitle>Sign in required</AlertTitle>
+        <AlertDescription>You must be signed in to log a found item.</AlertDescription>
+      </Alert>
+    {:else if !isLibrarian}
+      <Alert variant="destructive" class="text-sm">
+        <AlertTitle>Librarians only</AlertTitle>
+        <AlertDescription>You need librarian access to log found items.</AlertDescription>
+      </Alert>
     {:else}
       <Card class="border-border/80 bg-card text-sm shadow-none">
         <CardHeader>
           <CardTitle>Item details</CardTitle>
           <CardDescription class="text-sm">
-            Adjust the report details and optionally replace the image.
+            Required fields are marked with an asterisk.
           </CardDescription>
         </CardHeader>
         <CardContent class="space-y-6">
           <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div class="space-y-2">
               <Label class="text-sm" for="title-input">Title *</Label>
-              <Input class="text-sm" id="title-input" type="text" bind:value={title} />
+              <Input
+                id="title-input"
+                type="text"
+                class="text-sm"
+                placeholder="Blue backpack"
+                bind:value={title}
+              />
             </div>
 
             <div class="space-y-2">
@@ -270,23 +266,28 @@
 
             <div class="space-y-2 md:col-span-2">
               <Label class="text-sm" for="description-input">Description *</Label>
-              <Textarea class="text-sm" id="description-input" rows={4} bind:value={description} />
+              <Textarea
+                id="description-input"
+                class="text-sm"
+                rows={4}
+                placeholder="Red tag with initials on the zipper"
+                bind:value={description}
+              />
             </div>
 
             <div class="space-y-2">
-              <Label class="text-sm" for="location-input">{locationLabel}</Label>
-              <Input class="text-sm" id="location-input" type="text" bind:value={locationFound} />
+              <Label class="text-sm" for="location-input">Location found</Label>
+              <Input
+                id="location-input"
+                type="text"
+                class="text-sm"
+                placeholder="e.g. Library front desk"
+                bind:value={locationFound}
+              />
             </div>
 
             <div class="space-y-2 md:col-span-2">
-              <Label class="text-sm" for="image-input">Update Image</Label>
-              {#if imageUrl && !imageFile}
-                <img
-                  src={imageUrl}
-                  alt="Current item"
-                  class="h-32 border object-cover"
-                />
-              {/if}
+              <Label class="text-sm" for="image-input">Image</Label>
               <Input
                 bind:ref={imageInput}
                 id="image-input"
@@ -303,15 +304,17 @@
 
           {#if formError}
             <Alert variant="destructive" class="text-sm">
-              <AlertTitle>Could not update item</AlertTitle>
+              <AlertTitle>Could not log item</AlertTitle>
               <AlertDescription>{formError}</AlertDescription>
             </Alert>
           {/if}
         </CardContent>
-
         <CardFooter class="flex flex-wrap gap-3">
-          <Button class="text-sm" onclick={handleUpdateItem} disabled={formLoading || !session}>
-            {formLoading ? "Saving..." : "Save Changes"}
+          <Button class="text-sm" onclick={handleSubmitItem} disabled={formLoading || !session}>
+            {formLoading ? "Logging..." : "Log found item"}
+          </Button>
+          <Button variant="outline" class="text-sm" onclick={clearForm}>
+            Clear
           </Button>
         </CardFooter>
       </Card>

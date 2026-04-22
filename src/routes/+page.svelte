@@ -656,8 +656,14 @@
                 {#if session}
                   <Button href="/submit" class="gap-1.5 text-sm">
                     <Plus size={16} />
-                    <span>Report an item</span>
+                    <span>Report lost item</span>
                   </Button>
+                  {#if isLibrarian}
+                    <Button href="/log-found" variant="secondary" class="gap-1.5 text-sm">
+                      <Plus size={16} />
+                      <span>Log found item</span>
+                    </Button>
+                  {/if}
                 {:else}
                   <Button variant="secondary" class="gap-1.5 text-sm" disabled>
                     <Plus size={16} />
