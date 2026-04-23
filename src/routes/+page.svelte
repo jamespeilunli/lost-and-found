@@ -496,9 +496,16 @@
   <header class="relative z-40 border-b bg-card/95 backdrop-blur-sm transition-colors duration-200">
     <div class="mx-auto max-w-6xl px-4 py-4 md:py-5">
       <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div class="text-left">
-          <h1 class="text-left text-2xl font-bold leading-tight md:text-3xl">Library Lost &amp; Found</h1>
-          <p class="mt-1 text-sm text-muted-foreground">Browse reported items and check their status.</p>
+        <div class="flex items-center gap-3 text-left">
+          <img
+            src="/favicon.png"
+            alt="MVHS logo"
+            class="h-12 w-12 shrink-0 object-contain md:h-14 md:w-14"
+          />
+          <div>
+            <h1 class="text-left text-2xl font-bold leading-tight md:text-3xl">Library Lost &amp; Found</h1>
+            <p class="mt-1 text-sm text-muted-foreground">Browse reported items and check their status.</p>
+          </div>
         </div>
 
         <div class="flex items-center gap-3 md:justify-end">
