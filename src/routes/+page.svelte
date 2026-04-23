@@ -15,6 +15,7 @@
     LayoutGrid,
     TableProperties,
     RefreshCw,
+    Info,
   } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
@@ -559,6 +560,16 @@
                     <span>Dark mode</span>
                   {/if}
                 </button>
+
+                <a
+                  href="/about"
+                  role="menuitem"
+                  class="flex w-full items-center gap-2 border-t border-border/80 px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                  onclick={closeMenu}
+                >
+                  <Info size={16} />
+                  <span>About</span>
+                </a>
 
                 {#if session && isLibrarian}
                   <a

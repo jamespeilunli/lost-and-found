@@ -2,6 +2,8 @@
 
 A SvelteKit app for managing library lost-and-found items. Students can report lost items and browse the inventory, while librarians can log found items, update statuses, archive records, and manage librarian access.
 
+Production: https://mvhs-lost-and-found.vercel.app
+
 ## Features
 
 - Public inventory view with search
