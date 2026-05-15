@@ -781,9 +781,9 @@
                   !viewingDeleted && (isLibrarian || (session && session.user.id === item.created_by))}
                 <Card class="border-border/80 bg-card py-0">
                   {#if item.image_url}
-                    <img src={item.image_url} alt={item.title} class="h-44 w-full object-cover" />
+                    <img src={item.image_url} alt={item.title} class="h-[clamp(16rem,28vw,20rem)] w-full object-cover" />
                   {:else}
-                    <div class="flex h-44 w-full items-center justify-center bg-muted text-sm text-muted-foreground">
+                    <div class="flex h-[clamp(16rem,28vw,20rem)] w-full items-center justify-center bg-muted text-sm text-muted-foreground">
                       No image
                     </div>
                   {/if}
