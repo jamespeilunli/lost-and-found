@@ -52,7 +52,7 @@
     status === "lost"
       ? "Edit lost item report"
       : status === "found"
-        ? "Edit found item"
+        ? "Edit item at library"
         : status === "claimed"
           ? "Edit claimed item"
           : "Edit item";
@@ -60,7 +60,7 @@
     status === "lost"
       ? "Update the details of the item you reported lost."
       : status === "found"
-        ? "Update the details of this turned-in item."
+        ? "Update the details of this item at the library."
         : "Update this item's details without changing its status.";
 
   let imageFile: File | null = null;

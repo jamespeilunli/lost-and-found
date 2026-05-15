@@ -197,7 +197,7 @@
             Log a found item
           </h1>
           <p class="mt-1 text-sm text-muted-foreground">
-            Record an item that's been turned in, so its owner can claim it.
+            Record an item that is at the library and ready for its owner to pick up.
           </p>
         </div>
       </div>

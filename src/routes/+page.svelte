@@ -45,6 +45,11 @@
   };
 
   const statusOptions: ItemStatus[] = ["lost", "found", "claimed"];
+  const statusLabels: Record<ItemStatus, string> = {
+    lost: "Lost",
+    found: "At library",
+    claimed: "Claimed",
+  };
 
   let session: Session | null = null;
   let userRole: UserRole | null = null;
@@ -102,6 +107,10 @@
     }
 
     return "bg-primary/20 text-foreground uppercase dark:bg-primary/25";
+  }
+
+  function formatStatusLabel(status: ItemStatus) {
+    return statusLabels[status];
   }
 
   function formatItemDate(value: string) {
@@ -174,6 +183,7 @@
       { value: item.location_found, weight: 3 },
       { value: item.description, weight: 2 },
       { value: item.status, weight: 1 },
+      { value: formatStatusLabel(item.status), weight: 1 },
     ].map(({ value, weight }) => ({
       text: normalizeSearchValue(value),
       weight,
@@ -407,7 +417,7 @@
     }
 
     items = items.map((item) => (item.id === itemId ? (data as ItemRow) : item));
-    toast.success(`Item marked as ${nextStatus}.`);
+    toast.success(`Item marked as ${formatStatusLabel(nextStatus).toLowerCase()}.`);
   }
 
   async function deleteItem(itemId: string) {
@@ -792,7 +802,7 @@
                     <div class="flex items-start justify-between gap-3">
                       <h3 class="text-base font-semibold md:text-lg">{item.title}</h3>
                       <Badge class={`${statusBadgeVariant(item.status)} text-sm`}>
-                        {item.status}
+                        {formatStatusLabel(item.status)}
                       </Badge>
                     </div>
                     <div>
@@ -861,11 +871,11 @@
                             onValueChange={(value: string) => updateItemStatus(item.id, value as ItemStatus)}
                           >
                             <SelectTrigger class="w-[140px] bg-background text-sm">
-                              {item.status}
+                              {formatStatusLabel(item.status)}
                             </SelectTrigger>
                             <SelectContent>
                               {#each statusOptions as option}
-                                <SelectItem value={option} label={option} />
+                                <SelectItem value={option} label={formatStatusLabel(option)} />
                               {/each}
                             </SelectContent>
                           </Select>
@@ -954,7 +964,7 @@
                       </td>
                       <td class="px-4 py-4">
                         <Badge class={`${statusBadgeVariant(item.status)} text-sm`}>
-                          {item.status}
+                          {formatStatusLabel(item.status)}
                         </Badge>
                       </td>
                       <td class="px-4 py-4">
@@ -1011,11 +1021,11 @@
                                     onValueChange={(value: string) => updateItemStatus(item.id, value as ItemStatus)}
                                   >
                                     <SelectTrigger class="w-full bg-background text-sm">
-                                      {item.status}
+                                      {formatStatusLabel(item.status)}
                                     </SelectTrigger>
                                     <SelectContent>
                                       {#each statusOptions as option}
-                                        <SelectItem value={option} label={option} />
+                                        <SelectItem value={option} label={formatStatusLabel(option)} />
                                       {/each}
                                     </SelectContent>
                                   </Select>
