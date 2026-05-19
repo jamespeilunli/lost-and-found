@@ -16,6 +16,8 @@
     TableProperties,
     RefreshCw,
     Info,
+    Filter,
+    ChevronDown,
   } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
@@ -24,6 +26,15 @@
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
   import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "$lib/components/ui/card";
+  import {
+    DropdownMenu,
+    DropdownMenuCheckboxGroup,
+    DropdownMenuCheckboxItem,
+    DropdownMenuContent,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
+    DropdownMenuTrigger,
+  } from "$lib/components/ui/dropdown-menu";
   import { Input } from "$lib/components/ui/input";
   import { Select, SelectContent, SelectItem, SelectTrigger } from "$lib/components/ui/select";
   import { Separator } from "$lib/components/ui/separator";
@@ -50,6 +61,8 @@
     found: "At library",
     claimed: "Claimed",
   };
+  const toolbarDropdownTriggerClass =
+    "flex h-8 w-[176px] items-center justify-between gap-1.5 rounded-none border border-input bg-transparent py-2 pr-2 pl-2.5 text-xs whitespace-nowrap transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 aria-expanded:bg-muted [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0";
 
   let session: Session | null = null;
   let userRole: UserRole | null = null;
@@ -64,13 +77,15 @@
   let submitterEmails: Record<string, string> = {};
   let searchQuery = "";
   let viewMode: ViewMode = "cards";
+  let selectedStatusFilters: string[] = [...statusOptions];
   let expandedTableDescriptions: Record<string, boolean> = {};
   let expandedCardDescriptions: Record<string, boolean> = {};
   $: isLibrarian = userRole === "librarian";
 
   // computed list to render (either normal items or deleted items)
   $: displayedItems = viewingDeleted ? deletedItems : items;
-  $: filteredDisplayedItems = getFilteredItems(displayedItems, searchQuery);
+  $: filteredDisplayedItems = getFilteredItems(displayedItems, searchQuery, selectedStatusFilters);
+  $: statusFilterSummary = getStatusFilterSummary(selectedStatusFilters);
 
   let isDark = false;
   let menuOpen = false;
@@ -211,13 +226,16 @@
     return totalScore;
   }
 
-  function getFilteredItems(list: ItemRow[], query: string) {
+  function getFilteredItems(list: ItemRow[], query: string, selectedStatuses: string[]) {
+    const statusSet = new Set(selectedStatuses);
+    const statusFilteredList = list.filter((item) => statusSet.has(item.status));
     const normalizedQuery = normalizeSearchValue(query);
+
     if (!normalizedQuery) {
-      return list;
+      return statusFilteredList;
     }
 
-    return list
+    return statusFilteredList
       .map((item) => ({
         item,
         score: getItemSearchScore(item, normalizedQuery),
@@ -225,6 +243,18 @@
       .filter(({ score }) => score > 0)
       .sort((a, b) => b.score - a.score)
       .map(({ item }) => item);
+  }
+
+  function getStatusFilterSummary(selectedStatuses: string[]) {
+    if (selectedStatuses.length === statusOptions.length) {
+      return "All statuses";
+    }
+
+    if (selectedStatuses.length === 0) {
+      return "No statuses";
+    }
+
+    return selectedStatuses.map((status) => formatStatusLabel(status as ItemStatus)).join(", ");
   }
 
   function shouldShowDescriptionToggle(description: string, maxLength: number) {
@@ -633,7 +663,7 @@
       </Alert>
     {/if}
 
-    <Card class="border-border/80 bg-card text-sm shadow-none">
+    <Card class="overflow-visible border-border/80 bg-card text-sm shadow-none">
       <CardHeader class="gap-3">
         <div class="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
           <div class="space-y-1">
@@ -730,35 +760,61 @@
                 {/if}
 
                 <div class="space-y-1">
+                  <p class="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Status</p>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      class={toolbarDropdownTriggerClass}
+                      aria-label={`Filter by status, currently ${statusFilterSummary}`}
+                    >
+                      <span class="flex min-w-0 items-center gap-1.5">
+                        <Filter class="text-muted-foreground" />
+                        <span class="truncate">{statusFilterSummary}</span>
+                      </span>
+                      <ChevronDown class="text-muted-foreground" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuCheckboxGroup bind:value={selectedStatusFilters}>
+                        {#each statusOptions as option}
+                          <DropdownMenuCheckboxItem value={option} closeOnSelect={false}>
+                            {formatStatusLabel(option)}
+                          </DropdownMenuCheckboxItem>
+                        {/each}
+                      </DropdownMenuCheckboxGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
+                <div class="space-y-1">
                   <p class="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Layout</p>
-                  <div class="w-fit">
-                    <Select type="single" bind:value={viewMode}>
-                      <SelectTrigger
-                        class="h-10 min-w-0 border-border/80 bg-background px-2.5 text-sm"
-                        aria-label={`Choose layout, currently ${viewMode === "cards" ? "cards view" : "table view"}`}
-                      >
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      class={toolbarDropdownTriggerClass}
+                      aria-label={`Choose layout, currently ${viewMode === "cards" ? "cards view" : "table view"}`}
+                    >
+                      <span class="flex min-w-0 items-center gap-1.5">
                         {#if viewMode === "cards"}
-                          <LayoutGrid size={16} />
+                          <LayoutGrid class="text-muted-foreground" />
+                          <span>Cards</span>
                         {:else}
-                          <TableProperties size={16} />
+                          <TableProperties class="text-muted-foreground" />
+                          <span>Table</span>
                         {/if}
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cards">
-                          <span class="flex items-center gap-2">
-                            <LayoutGrid size={15} />
-                            <span>Cards</span>
-                          </span>
-                        </SelectItem>
-                        <SelectItem value="table">
-                          <span class="flex items-center gap-2">
-                            <TableProperties size={15} />
-                            <span>Table</span>
-                          </span>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                      </span>
+                      <ChevronDown class="text-muted-foreground" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuRadioGroup bind:value={viewMode}>
+                        <DropdownMenuRadioItem value="cards">
+                          <LayoutGrid />
+                          <span>Cards</span>
+                        </DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="table">
+                          <TableProperties />
+                          <span>Table</span>
+                        </DropdownMenuRadioItem>
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
 
@@ -782,7 +838,7 @@
         {:else if displayedItems.length === 0}
           <p class="italic text-muted-foreground">No reports yet. Add the first item report.</p>
         {:else if filteredDisplayedItems.length === 0}
-          <p class="italic text-muted-foreground">No items match that search.</p>
+          <p class="italic text-muted-foreground">No items match the current filters.</p>
         {:else}
           {#if viewMode === "cards"}
             <div class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
