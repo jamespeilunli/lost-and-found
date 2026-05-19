@@ -1076,13 +1076,14 @@
             <div class="overflow-x-auto rounded-md border border-border/80">
               <table class="w-full min-w-[820px] border-collapse text-left text-sm table-fixed">
                 <colgroup>
-                  <col class="w-[42%]" />
-                  <col class="w-[11%]" />
-                  <col class="w-[11%]" />
-                  <col class="w-[14%]" />
-                  <col class="w-[14%]" />
+                  <col class="w-[34%]" />
+                  <col class="w-[10%]" />
+                  <col class="w-[10%]" />
+                  <col class="w-[12%]" />
+                  <col class="w-[12%]" />
+                  <col class="w-[13%]" />
                   {#if isLibrarian}
-                    <col class="w-[14%]" />
+                    <col class="w-[13%]" />
                   {/if}
                   <col class="w-[8%]" />
                 </colgroup>
@@ -1093,6 +1094,7 @@
                     <th class="px-4 py-3 font-medium">Category</th>
                     <th class="px-4 py-3 font-medium">Location</th>
                     <th class="px-4 py-3 font-medium">Reported</th>
+                    <th class="px-4 py-3 font-medium">Until donation</th>
                     {#if isLibrarian}
                       <th class="px-4 py-3 font-medium">Submitter</th>
                     {/if}
@@ -1137,17 +1139,6 @@
                         <Badge class={`${statusBadgeVariant(item.status)} text-sm`}>
                           {formatStatusLabel(item.status)}
                         </Badge>
-                        {#if !viewingDeleted && item.status === "found"}
-                          {@const itemDonationDate = getItemDonationDate(item.created_at)}
-                          {@const itemCountdown = getCountdown(itemDonationDate, now)}
-                          <div
-                            class={`mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${urgencyPillClass[itemCountdown.level]}`}
-                            title={`Donated on ${formatClearingDate(itemDonationDate)} if not picked up`}
-                          >
-                            <Hourglass size={12} class="shrink-0" />
-                            <span class="tabular-nums">{formatCountdown(itemCountdown)}</span>
-                          </div>
-                        {/if}
                       </td>
                       <td class="px-4 py-4">
                         <div class="w-full">
@@ -1163,6 +1154,21 @@
                         <div class="w-full">
                           <span class="block truncate" title={formatItemDate(item.created_at)}>{formatItemDate(item.created_at)}</span>
                         </div>
+                      </td>
+                      <td class="px-4 py-4 whitespace-nowrap">
+                        {#if !viewingDeleted && item.status === "found"}
+                          {@const itemDonationDate = getItemDonationDate(item.created_at)}
+                          {@const itemCountdown = getCountdown(itemDonationDate, now)}
+                          <div
+                            class={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${urgencyPillClass[itemCountdown.level]}`}
+                            title={`Donated on ${formatClearingDate(itemDonationDate)} if not picked up`}
+                          >
+                            <Hourglass size={12} class="shrink-0" />
+                            <span class="tabular-nums">{formatCountdown(itemCountdown)}</span>
+                          </div>
+                        {:else}
+                          <span class="text-muted-foreground">—</span>
+                        {/if}
                       </td>
                       {#if isLibrarian}
                         <td class="px-4 py-4">
