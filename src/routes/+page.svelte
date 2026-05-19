@@ -18,6 +18,8 @@
     Info,
     Filter,
     ChevronDown,
+    AlarmClock,
+    Hourglass,
   } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
@@ -137,6 +139,78 @@
       minute: "2-digit",
     });
   }
+
+  // --- Donation countdown ("sense of urgency") ---
+  // The library donates all unclaimed items at the end of each month, so the
+  // next clearing is the final moment of the current month.
+  let now = new Date();
+
+  // Items must sit at the library for a minimum grace period before they are
+  // eligible for a month-end clearing, so something logged late in the month
+  // rolls over to the next month's clearing rather than being donated days later.
+  const GRACE_PERIOD_DAYS = 14;
+
+  type UrgencyLevel = "normal" | "warning" | "critical";
+  type Countdown = {
+    totalMs: number;
+    days: number;
+    hours: number;
+    minutes: number;
+    seconds: number;
+    level: UrgencyLevel;
+  };
+
+  function getNextClearingDate(reference: Date) {
+    return new Date(reference.getFullYear(), reference.getMonth() + 1, 0, 23, 59, 59, 999);
+  }
+
+  // The earliest month-end clearing that occurs after the item has been at the
+  // library for the full grace period.
+  function getItemDonationDate(createdAt: string) {
+    const eligibleFrom = new Date(createdAt);
+    eligibleFrom.setDate(eligibleFrom.getDate() + GRACE_PERIOD_DAYS);
+    return getNextClearingDate(eligibleFrom);
+  }
+
+  function getCountdown(target: Date, current: Date): Countdown {
+    const totalMs = Math.max(0, target.getTime() - current.getTime());
+    const totalSeconds = Math.floor(totalMs / 1000);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const level: UrgencyLevel = days <= 3 ? "critical" : days <= 7 ? "warning" : "normal";
+    return { totalMs, days, hours, minutes, seconds, level };
+  }
+
+  function formatClearingDate(date: Date) {
+    return date.toLocaleDateString(undefined, { month: "long", day: "numeric" });
+  }
+
+  function formatCountdown(c: Countdown) {
+    if (c.days >= 1) {
+      return `${c.days}d ${c.hours}h ${c.minutes}m`;
+    }
+    if (c.hours >= 1) {
+      return `${c.hours}h ${c.minutes}m ${c.seconds}s`;
+    }
+    return `${c.minutes}m ${c.seconds}s`;
+  }
+
+  $: clearingDate = getNextClearingDate(now);
+  $: clearingCountdown = getCountdown(clearingDate, now);
+
+  const urgencyBannerClass: Record<UrgencyLevel, string> = {
+    normal: "border-primary/40 bg-primary/10 text-foreground",
+    warning: "border-amber-500/70 bg-amber-200 text-amber-950 dark:bg-amber-900/70 dark:text-amber-50",
+    critical: "border-red-400/60 bg-red-100 text-red-950 dark:bg-red-950/60 dark:text-red-100",
+  };
+
+  const urgencyPillClass: Record<UrgencyLevel, string> = {
+    normal: "bg-muted/55 text-muted-foreground",
+    warning: "bg-amber-200 text-amber-950 dark:bg-amber-900 dark:text-amber-100",
+    critical: "bg-red-100 text-red-900 dark:bg-red-950 dark:text-red-200",
+  };
 
   function normalizeSearchValue(value: string | null | undefined) {
     return (value ?? "")
@@ -520,8 +594,13 @@
       loadItems();
     });
 
+    const clockInterval = setInterval(() => {
+      now = new Date();
+    }, 1000);
+
     return () => {
       data.subscription.unsubscribe();
+      clearInterval(clockInterval);
     };
   });
 </script>
@@ -654,6 +733,30 @@
   </header>
 
   <main class="mx-auto max-w-6xl px-4 py-6">
+    <div
+      class={`mb-6 flex flex-col gap-2 rounded-md border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 ${urgencyBannerClass[clearingCountdown.level]}`}
+      role="status"
+      aria-live="polite"
+    >
+      <div class="flex items-start gap-3">
+        <AlarmClock size={20} class="mt-0.5 shrink-0" />
+        <div>
+          <p class="text-sm font-semibold">
+            Next clearing: {formatClearingDate(clearingDate)}.
+          </p>
+          <p class="text-xs opacity-80">
+            Items kept at least two weeks are donated at month-end. Check each item for its own pickup deadline.
+          </p>
+        </div>
+      </div>
+      <div class="flex shrink-0 items-center gap-2 sm:flex-col sm:items-end sm:gap-0.5">
+        <span class="font-mono text-lg font-bold tabular-nums leading-none">
+          {formatCountdown(clearingCountdown)}
+        </span>
+        <span class="text-[11px] font-medium uppercase tracking-wide opacity-80">until clearing</span>
+      </div>
+    </div>
+
     {#if isLibrarian}
       <Alert class="mb-6 border-primary/40 bg-primary/10 py-3 text-sm">
         <AlertTitle>Librarian View</AlertTitle>
@@ -877,6 +980,18 @@
                       {/if}
                     </div>
                     <div class="flex flex-wrap gap-2 text-sm text-muted-foreground">
+                      {#if !viewingDeleted && item.status === "found"}
+                        {@const itemDonationDate = getItemDonationDate(item.created_at)}
+                        {@const itemCountdown = getCountdown(itemDonationDate, now)}
+                        <div
+                          class={`inline-flex max-w-full items-center gap-2 rounded-full px-2.5 py-1.5 font-medium ${urgencyPillClass[itemCountdown.level]}`}
+                          title={`Donated on ${formatClearingDate(itemDonationDate)} if not picked up`}
+                          aria-label={`${formatCountdown(itemCountdown)} until this item is donated`}
+                        >
+                          <Hourglass size={15} class="shrink-0" />
+                          <span class="tabular-nums">{formatCountdown(itemCountdown)} left</span>
+                        </div>
+                      {/if}
                       <div
                         class="inline-flex max-w-full items-center gap-2 rounded-full bg-muted/55 px-2.5 py-1.5"
                         title={`Category: ${item.category}`}
@@ -1022,6 +1137,17 @@
                         <Badge class={`${statusBadgeVariant(item.status)} text-sm`}>
                           {formatStatusLabel(item.status)}
                         </Badge>
+                        {#if !viewingDeleted && item.status === "found"}
+                          {@const itemDonationDate = getItemDonationDate(item.created_at)}
+                          {@const itemCountdown = getCountdown(itemDonationDate, now)}
+                          <div
+                            class={`mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${urgencyPillClass[itemCountdown.level]}`}
+                            title={`Donated on ${formatClearingDate(itemDonationDate)} if not picked up`}
+                          >
+                            <Hourglass size={12} class="shrink-0" />
+                            <span class="tabular-nums">{formatCountdown(itemCountdown)}</span>
+                          </div>
+                        {/if}
                       </td>
                       <td class="px-4 py-4">
                         <div class="w-full">
