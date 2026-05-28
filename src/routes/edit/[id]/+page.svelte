@@ -28,6 +28,11 @@
 
   let session: Session | null = null;
   const itemId = $page.params.id;
+  const STATUS_OPTIONS = ["found", "claimed"] as const;
+  const statusLabels = {
+    found: "At library",
+    claimed: "Claimed",
+  };
 
   let title = "";
   let description = "";
@@ -44,24 +49,12 @@
   let selectedCategory = "";
   let customCategory = "";
   let locationFound = "";
-  let status = "lost";
+  let status: "found" | "claimed" = "found";
+  let manualDueDate = "";
   let imageUrl: string | null = null;
 
-  $: locationLabel = status === "lost" ? "Last seen location" : "Location found";
-  $: headingText =
-    status === "lost"
-      ? "Edit lost item report"
-      : status === "found"
-        ? "Edit item at library"
-        : status === "claimed"
-          ? "Edit claimed item"
-          : "Edit item";
-  $: subtitleText =
-    status === "lost"
-      ? "Update the details of the item you reported lost."
-      : status === "found"
-        ? "Update the details of this item at the library."
-        : "Update this item's details without changing its status.";
+  $: headingText = status === "claimed" ? "Edit claimed item" : "Edit library item";
+  $: subtitleText = "Update item details, status, and pickup deadline.";
 
   let imageFile: File | null = null;
   let imageInput: HTMLInputElement | null = null;
@@ -80,6 +73,14 @@
       return;
     }
 
+    const { data: allowed } = await supabase.rpc("is_librarian_email");
+    if (allowed !== true) {
+      toast.error("You need librarian access to edit inventory.");
+      await supabase.auth.signOut();
+      await goto("/");
+      return;
+    }
+
     const { data: itemData, error } = await supabase
       .from("items")
       .select("*")
@@ -92,8 +93,8 @@
       return;
     }
 
-    if (!session || itemData.created_by !== session.user.id) {
-      toast.error("You don't have permission to edit this item");
+    if (itemData.status === "lost") {
+      toast.error("Legacy lost reports are no longer editable.");
       await goto("/");
       return;
     }
@@ -108,7 +109,8 @@
       customCategory = itemData.category;
     }
     locationFound = itemData.location_found || "";
-    status = itemData.status || "lost";
+    status = STATUS_OPTIONS.includes(itemData.status) ? itemData.status : "found";
+    manualDueDate = itemData.manual_due_date || "";
     imageUrl = itemData.image_url;
 
     pageLoading = false;
@@ -161,6 +163,8 @@
       description: description.trim(),
       category: finalCategory,
       location_found: locationFound.trim() ? locationFound.trim() : null,
+      status,
+      manual_due_date: manualDueDate || null,
       image_url: newImageUrl,
     };
 
@@ -168,7 +172,6 @@
       .from("items")
       .update(payload)
       .eq("id", itemId)
-      .eq("created_by", session.user.id)
       .select()
       .single();
 
@@ -190,6 +193,8 @@
         session = nextSession;
         if (!nextSession) {
           goto("/");
+        } else {
+          loadSessionAndItem();
         }
       },
     );
@@ -201,7 +206,7 @@
 </script>
 
 <svelte:head>
-  <title>{headingText} | Lost and Found</title>
+  <title>{headingText} | Library Inventory</title>
 </svelte:head>
 
 <div class="min-h-screen bg-background text-foreground transition-colors duration-200">
@@ -274,8 +279,33 @@
             </div>
 
             <div class="space-y-2">
-              <Label class="text-sm" for="location-input">{locationLabel}</Label>
+              <Label class="text-sm" for="location-input">Location found</Label>
               <Input class="text-sm" id="location-input" type="text" bind:value={locationFound} />
+            </div>
+
+            <div class="space-y-2">
+              <Label class="text-sm" for="status-select-trigger">Status</Label>
+              <Select type="single" bind:value={status}>
+                <SelectTrigger
+                  id="status-select-trigger"
+                  class="w-full justify-between bg-background text-sm"
+                >
+                  {statusLabels[status]}
+                </SelectTrigger>
+                <SelectContent>
+                  {#each STATUS_OPTIONS as option}
+                    <SelectItem value={option} label={statusLabels[option]} />
+                  {/each}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div class="space-y-2">
+              <Label class="text-sm" for="due-date-input">Manual pickup deadline</Label>
+              <Input class="text-sm" id="due-date-input" type="date" bind:value={manualDueDate} />
+              <p class="text-xs text-muted-foreground">
+                Leave blank to use the automatic month-end deadline.
+              </p>
             </div>
 
             <div class="space-y-2 md:col-span-2">

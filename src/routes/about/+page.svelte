@@ -5,10 +5,10 @@
 </script>
 
 <svelte:head>
-  <title>About | Lost and Found</title>
+  <title>About | Library Inventory</title>
   <meta
     name="description"
-    content="About the Lost and Found app for managing library lost and found items."
+    content="About the unofficial library inventory app."
   />
 </svelte:head>
 
@@ -23,7 +23,7 @@
           </Button>
           <h1 class="mt-2 text-2xl font-bold leading-tight md:text-3xl">About</h1>
           <p class="mt-1 text-sm text-muted-foreground">
-            A short overview of the Lost and Found app.
+            A short overview of the unofficial inventory app.
           </p>
         </div>
       </div>
@@ -33,19 +33,18 @@
   <main class="mx-auto max-w-4xl px-4 py-6">
     <Card class="border-border/80 bg-card text-sm shadow-none">
       <CardHeader>
-        <CardTitle>Lost and Found</CardTitle>
+        <CardTitle>Library Inventory</CardTitle>
         <CardDescription class="text-sm">
-          A library lost-and-found app for students and librarians.
+          An unofficial public inventory for library lost-and-found items.
         </CardDescription>
       </CardHeader>
       <CardContent class="space-y-4">
         <p class="text-sm leading-6 text-muted-foreground">
-          Students can report lost items and browse the inventory. Librarians can log found items,
-          update statuses, and keep records organized in one place.
+          Anyone can browse active found items without signing in. Whitelisted librarians can log
+          found items, update statuses, set pickup deadlines, and keep records organized in one place.
         </p>
         <p class="text-sm leading-6 text-muted-foreground">
-          The project is meant to make it easier to check whether an item has been found without
-          relying on informal tracking.
+          This project is independently maintained and is not an official school or district service.
         </p>
         <a
           href="https://github.com/jamespeilunli/lost-and-found"

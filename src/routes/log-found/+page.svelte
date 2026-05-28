@@ -25,10 +25,8 @@
   } from "$lib/components/ui/select";
   import { Textarea } from "$lib/components/ui/textarea";
 
-  type UserRole = "user" | "librarian";
-
   let session: Session | null = null;
-  let userRole: UserRole | null = null;
+  let isLibrarian = false;
   let authChecked = false;
 
   let title = "";
@@ -46,6 +44,7 @@
   let selectedCategory = "";
   let customCategory = "";
   let locationFound = "";
+  let manualDueDate = "";
   let imageFile: File | null = null;
   let imageInput: HTMLInputElement | null = null;
 
@@ -55,27 +54,24 @@
   const defaultStatus = "found";
   const imageBucket = "item-images";
 
-  $: isLibrarian = userRole === "librarian";
-
   async function loadSession() {
     const { data } = await supabase.auth.getSession();
     session = data.session;
 
     if (!session) {
-      userRole = null;
+      isLibrarian = false;
       authChecked = true;
       await goto("/");
       return;
     }
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", session.user.id)
-      .maybeSingle();
-
-    userRole = (profile?.role as UserRole | null) ?? "user";
+    const { data: allowed } = await supabase.rpc("is_librarian_email");
+    isLibrarian = allowed === true;
     authChecked = true;
+
+    if (!isLibrarian) {
+      await supabase.auth.signOut();
+    }
   }
 
   async function handleSubmitItem() {
@@ -131,6 +127,7 @@
       status: defaultStatus,
       image_url: imageUrl,
       location_found: locationFound.trim() ? locationFound.trim() : null,
+      manual_due_date: manualDueDate || null,
       created_by: session.user.id,
     };
 
@@ -156,6 +153,7 @@
     selectedCategory = "";
     customCategory = "";
     locationFound = "";
+    manualDueDate = "";
     imageFile = null;
     if (imageInput) {
       imageInput.value = "";
@@ -170,6 +168,8 @@
       session = nextSession;
       if (!nextSession) {
         goto("/");
+      } else {
+        loadSession();
       }
     });
 
@@ -284,6 +284,19 @@
                 placeholder="e.g. Library front desk"
                 bind:value={locationFound}
               />
+            </div>
+
+            <div class="space-y-2">
+              <Label class="text-sm" for="due-date-input">Manual pickup deadline</Label>
+              <Input
+                id="due-date-input"
+                type="date"
+                class="text-sm"
+                bind:value={manualDueDate}
+              />
+              <p class="text-xs text-muted-foreground">
+                Leave blank to use the automatic month-end deadline.
+              </p>
             </div>
 
             <div class="space-y-2 md:col-span-2">

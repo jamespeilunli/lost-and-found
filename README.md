@@ -1,28 +1,24 @@
-# Lost and Found
+# Library Inventory
 
-A SvelteKit app for managing library lost-and-found items. Students can report lost items and browse the inventory, while librarians can log found items, update statuses, archive records, and manage librarian access.
-
-Production: https://mvhs-lost-and-found.vercel.app
+An unofficial SvelteKit app for managing library lost-and-found inventory. Anyone can browse active found items anonymously, while whitelisted librarians can log items, update statuses, set pickup deadlines, archive records, and manage librarian access.
 
 ## Features
 
-- Public inventory view with search
-- Student sign-in and lost item reporting
-- Librarian-only found item logging
-- Item statuses: `lost`, `found`, `claimed`
-- Optional image upload for items
-- Edit/delete for a user's own reports
+- Anonymous public inventory view with search
+- Librarian-only Google sign-in
+- Librarian email whitelist management
+- Found item logging with optional image upload
+- Item statuses: `found`, `claimed`
+- Automatic pickup deadlines with optional manual overrides
 - Archived item view for librarians
-- Librarian role management
 - Light/dark mode
 
 ## Routes
 
-- `/` - inventory dashboard
-- `/submit` - report a lost item
+- `/` - public inventory and librarian dashboard
 - `/log-found` - log a found item
-- `/edit/[id]` - edit an existing item
-- `/librarians` - manage librarian roles
+- `/edit/[id]` - edit an inventory item
+- `/librarians` - manage librarian email whitelist
 - `/about` - static about page
 
 ## Stack
@@ -40,10 +36,10 @@ The app expects:
 
 - `items` table
 - `deleted_items` table
-- `profiles` table
 - `item-images` storage bucket
-- `list_profiles_with_email` RPC
-- `set_profile_role` RPC
+- `public_inventory_items` view
+- `librarian_emails` table
+- Whitelist RPCs from `supabase/migrations/20260528000000_privacy_inventory_refactor.sql`
 - Google OAuth enabled in Supabase Auth
 
 ## Environment Variables
