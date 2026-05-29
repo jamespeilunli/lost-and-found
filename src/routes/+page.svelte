@@ -65,8 +65,7 @@
   };
   const toolbarDropdownTriggerClass =
     "flex h-8 w-[176px] items-center justify-between gap-1.5 rounded-none border border-input bg-transparent py-2 pr-2 pl-2.5 text-xs whitespace-nowrap transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 aria-expanded:bg-muted [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0";
-  const itemSelectColumns =
-    "id,title,description,category,status,image_url,location_found,created_at,manual_due_date";
+  const itemSelectColumns = "id,title,description,category,status,image_url,location_found,created_at,manual_due_date";
 
   let session: Session | null = null;
   let userRole: UserRole | null = null;
@@ -407,9 +406,6 @@
   async function loadUserRole(nextSession: Session | null) {
     if (!nextSession?.user) {
       userRole = null;
-      if (!isLoggingOut) {
-        authError = "";
-      }
       return null;
     }
 
@@ -675,17 +671,9 @@
       <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div class="flex items-center gap-3 text-left">
           {#if isDark}
-            <img
-              src="/faviconDark.png"
-              alt="MVHS logo"
-              class="h-12 w-12 shrink-0 object-contain md:h-14 md:w-14"
-            />
+            <img src="/faviconDark.png" alt="MVHS logo" class="h-12 w-12 shrink-0 object-contain md:h-14 md:w-14" />
           {:else}
-            <img
-              src="/favicon.png"
-              alt="MVHS logo"
-              class="h-12 w-12 shrink-0 object-contain md:h-14 md:w-14"
-            />
+            <img src="/favicon.png" alt="MVHS logo" class="h-12 w-12 shrink-0 object-contain md:h-14 md:w-14" />
           {/if}
           <div>
             <h1 class="text-left text-2xl font-bold leading-tight md:text-3xl">Library Lost &amp; Found</h1>
@@ -860,7 +848,9 @@
                   type="search"
                   bind:value={searchQuery}
                   class="h-10 bg-background pl-8 text-sm md:text-sm"
-                  placeholder={viewingDeleted ? "Search archived items" : "Search by title, category, location, or description"}
+                  placeholder={viewingDeleted
+                    ? "Search archived items"
+                    : "Search by title, category, location, or description"}
                   aria-label={viewingDeleted ? "Search archived items" : "Search inventory"}
                 />
               </div>
@@ -985,29 +975,34 @@
         <Separator class="bg-border/80" />
 
         <div class="px-4 pt-5">
-        {#if itemsLoading}
-          <p class="text-muted-foreground">Loading items...</p>
-        {:else if itemsError}
-          <Alert variant="destructive" class="text-sm">
-            <AlertTitle>Could not load items</AlertTitle>
-            <AlertDescription>{itemsError}</AlertDescription>
-          </Alert>
-        {:else if displayedItems.length === 0}
-          <p class="italic text-muted-foreground">
-            {viewingDeleted ? "No archived records to show." : "No inventory records to show."}
-          </p>
-        {:else if filteredDisplayedItems.length === 0}
-          <p class="italic text-muted-foreground">No items match the current filters.</p>
-        {:else}
-          {#if viewMode === "cards"}
+          {#if itemsLoading}
+            <p class="text-muted-foreground">Loading items...</p>
+          {:else if itemsError}
+            <Alert variant="destructive" class="text-sm">
+              <AlertTitle>Could not load items</AlertTitle>
+              <AlertDescription>{itemsError}</AlertDescription>
+            </Alert>
+          {:else if displayedItems.length === 0}
+            <p class="italic text-muted-foreground">
+              {viewingDeleted ? "No archived records to show." : "No inventory records to show."}
+            </p>
+          {:else if filteredDisplayedItems.length === 0}
+            <p class="italic text-muted-foreground">No items match the current filters.</p>
+          {:else if viewMode === "cards"}
             <div class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
               {#each filteredDisplayedItems as item (item.id)}
                 {@const showItemActions = !viewingDeleted && isLibrarian}
                 <Card class="border-border/80 bg-card py-0">
                   {#if item.image_url}
-                    <img src={item.image_url} alt={item.title} class="h-[clamp(16rem,28vw,20rem)] w-full object-cover" />
+                    <img
+                      src={item.image_url}
+                      alt={item.title}
+                      class="h-[clamp(16rem,28vw,20rem)] w-full object-cover"
+                    />
                   {:else}
-                    <div class="flex h-[clamp(16rem,28vw,20rem)] w-full items-center justify-center bg-muted text-sm text-muted-foreground">
+                    <div
+                      class="flex h-[clamp(16rem,28vw,20rem)] w-full items-center justify-center bg-muted text-sm text-muted-foreground"
+                    >
                       No image
                     </div>
                   {/if}
@@ -1020,7 +1015,9 @@
                       </Badge>
                     </div>
                     <div>
-                      <p class={`text-sm text-muted-foreground ${expandedCardDescriptions[item.id] ? "" : "line-clamp-4"}`}>
+                      <p
+                        class={`text-sm text-muted-foreground ${expandedCardDescriptions[item.id] ? "" : "line-clamp-4"}`}
+                      >
                         {item.description}
                       </p>
                       {#if shouldShowDescriptionToggle(item.description, 220)}
@@ -1045,7 +1042,9 @@
                         >
                           <Hourglass size={15} class="shrink-0" />
                           <span class="tabular-nums">{formatCountdown(itemCountdown)} left</span>
-                          <span class="text-[10px] uppercase opacity-70">{item.manual_due_date ? "custom" : "auto"}</span>
+                          <span class="text-[10px] uppercase opacity-70"
+                            >{item.manual_due_date ? "custom" : "auto"}</span
+                          >
                         </div>
                       {/if}
                       <div
@@ -1124,7 +1123,8 @@
                               variant="outline"
                               size="sm"
                               class="text-sm"
-                              disabled={pendingItemId === item.id || dueDateDrafts[item.id] === (item.manual_due_date ?? "")}
+                              disabled={pendingItemId === item.id ||
+                                dueDateDrafts[item.id] === (item.manual_due_date ?? "")}
                               onclick={() => updateItemDueDate(item.id)}
                             >
                               Save deadline
@@ -1187,16 +1187,24 @@
                       <td class="px-4 py-4">
                         <div class="flex items-start gap-3">
                           {#if item.image_url}
-                            <img src={item.image_url} alt={item.title} class="h-12 w-12 rounded-sm object-cover shrink-0" />
+                            <img
+                              src={item.image_url}
+                              alt={item.title}
+                              class="h-12 w-12 rounded-sm object-cover shrink-0"
+                            />
                           {:else}
-                            <div class="flex h-12 w-12 items-center justify-center rounded-sm bg-muted text-xs text-muted-foreground shrink-0">
+                            <div
+                              class="flex h-12 w-12 items-center justify-center rounded-sm bg-muted text-xs text-muted-foreground shrink-0"
+                            >
                               None
                             </div>
                           {/if}
                           <div class="min-w-0 flex-1 space-y-1">
                             <div class="truncate pr-2 font-medium">{item.title}</div>
                             <div class="max-w-none">
-                              <p class={`text-muted-foreground ${expandedTableDescriptions[item.id] ? "" : "line-clamp-2"}`}>
+                              <p
+                                class={`text-muted-foreground ${expandedTableDescriptions[item.id] ? "" : "line-clamp-2"}`}
+                              >
                                 {item.description}
                               </p>
                               {#if shouldShowDescriptionToggle(item.description, 120)}
@@ -1225,12 +1233,16 @@
                       </td>
                       <td class="px-4 py-4">
                         <div class="w-full">
-                          <span class="block truncate" title={item.location_found ?? "Unknown"}>{item.location_found ?? "Unknown"}</span>
+                          <span class="block truncate" title={item.location_found ?? "Unknown"}
+                            >{item.location_found ?? "Unknown"}</span
+                          >
                         </div>
                       </td>
                       <td class="px-4 py-4 whitespace-nowrap">
                         <div class="w-full">
-                          <span class="block truncate" title={formatItemDate(item.created_at)}>{formatItemDate(item.created_at)}</span>
+                          <span class="block truncate" title={formatItemDate(item.created_at)}
+                            >{formatItemDate(item.created_at)}</span
+                          >
                         </div>
                       </td>
                       <td class="px-4 py-4 whitespace-nowrap">
@@ -1264,7 +1276,8 @@
                                   variant="outline"
                                   size="sm"
                                   class="h-7 px-2 text-xs"
-                                  disabled={pendingItemId === item.id || dueDateDrafts[item.id] === (item.manual_due_date ?? "")}
+                                  disabled={pendingItemId === item.id ||
+                                    dueDateDrafts[item.id] === (item.manual_due_date ?? "")}
                                   onclick={() => updateItemDueDate(item.id)}
                                 >
                                   Save
@@ -1298,9 +1311,13 @@
                               >
                                 <EllipsisVertical size={16} />
                               </summary>
-                              <div class="absolute right-0 top-10 z-20 w-56 rounded-md border border-border/80 bg-popover p-2 shadow-md">
+                              <div
+                                class="absolute right-0 top-10 z-20 w-56 rounded-md border border-border/80 bg-popover p-2 shadow-md"
+                              >
                                 <div class="space-y-1">
-                                  <p class="px-2 pt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                  <p
+                                    class="px-2 pt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                                  >
                                     Status
                                   </p>
                                   <Select
@@ -1319,7 +1336,12 @@
                                   </Select>
                                 </div>
                                 <div class="mt-2 flex flex-col gap-1">
-                                    <Button href="/edit/{item.id}" variant="outline" size="sm" class="justify-start text-sm">Edit item</Button>
+                                  <Button
+                                    href="/edit/{item.id}"
+                                    variant="outline"
+                                    size="sm"
+                                    class="justify-start text-sm">Edit item</Button
+                                  >
                                   <Button
                                     variant="destructive"
                                     size="sm"
@@ -1347,7 +1369,6 @@
               </table>
             </div>
           {/if}
-        {/if}
         </div>
       </CardContent>
     </Card>
