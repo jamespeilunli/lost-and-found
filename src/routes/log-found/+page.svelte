@@ -127,15 +127,11 @@
       status: defaultStatus,
       image_url: imageUrl,
       location_found: locationFound.trim() ? locationFound.trim() : null,
-      manual_due_date: manualDueDate || null,
       created_by: session.user.id,
+      manual_due_date: manualDueDate || null,
     };
 
-    const { error } = await supabase
-      .from("items")
-      .insert([payload])
-      .select()
-      .single();
+    const { error } = await supabase.from("items").insert([payload]);
 
     if (error) {
       formError = "Failed to log item: " + error.message;
@@ -168,8 +164,6 @@
       session = nextSession;
       if (!nextSession) {
         goto("/");
-      } else {
-        loadSession();
       }
     });
 
@@ -287,16 +281,14 @@
             </div>
 
             <div class="space-y-2">
-              <Label class="text-sm" for="due-date-input">Manual pickup deadline</Label>
+              <Label class="text-sm" for="manual-due-date-input">Pickup deadline override</Label>
               <Input
-                id="due-date-input"
+                id="manual-due-date-input"
                 type="date"
                 class="text-sm"
                 bind:value={manualDueDate}
               />
-              <p class="text-xs text-muted-foreground">
-                Leave blank to use the automatic month-end deadline.
-              </p>
+              <p class="text-xs text-muted-foreground">Leave blank to use the automatic month-end deadline.</p>
             </div>
 
             <div class="space-y-2 md:col-span-2">

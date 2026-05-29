@@ -27,12 +27,8 @@
   import { Textarea } from "$lib/components/ui/textarea";
 
   let session: Session | null = null;
+  let isLibrarian = false;
   const itemId = $page.params.id;
-  const STATUS_OPTIONS = ["found", "claimed"] as const;
-  const statusLabels = {
-    found: "At library",
-    claimed: "Claimed",
-  };
 
   let title = "";
   let description = "";
@@ -49,12 +45,12 @@
   let selectedCategory = "";
   let customCategory = "";
   let locationFound = "";
-  let status: "found" | "claimed" = "found";
+  let status = "found";
   let manualDueDate = "";
   let imageUrl: string | null = null;
 
-  $: headingText = status === "claimed" ? "Edit claimed item" : "Edit library item";
-  $: subtitleText = "Update item details, status, and pickup deadline.";
+  $: headingText = status === "claimed" ? "Edit claimed item" : "Edit item at library";
+  $: subtitleText = "Update the inventory details and pickup deadline.";
 
   let imageFile: File | null = null;
   let imageInput: HTMLInputElement | null = null;
@@ -64,6 +60,8 @@
   let pageLoading = true;
 
   const imageBucket = "item-images";
+  const itemSelectColumns =
+    "id,title,description,category,status,image_url,location_found,created_at,manual_due_date";
 
   async function loadSessionAndItem() {
     const { data: authData } = await supabase.auth.getSession();
@@ -74,7 +72,9 @@
     }
 
     const { data: allowed } = await supabase.rpc("is_librarian_email");
-    if (allowed !== true) {
+    isLibrarian = allowed === true;
+
+    if (!isLibrarian) {
       toast.error("You need librarian access to edit inventory.");
       await supabase.auth.signOut();
       await goto("/");
@@ -83,7 +83,7 @@
 
     const { data: itemData, error } = await supabase
       .from("items")
-      .select("*")
+      .select(itemSelectColumns)
       .eq("id", itemId)
       .single();
 
@@ -94,7 +94,7 @@
     }
 
     if (itemData.status === "lost") {
-      toast.error("Legacy lost reports are no longer editable.");
+      toast.error("Lost reports are no longer editable.");
       await goto("/");
       return;
     }
@@ -109,7 +109,7 @@
       customCategory = itemData.category;
     }
     locationFound = itemData.location_found || "";
-    status = STATUS_OPTIONS.includes(itemData.status) ? itemData.status : "found";
+    status = itemData.status || "found";
     manualDueDate = itemData.manual_due_date || "";
     imageUrl = itemData.image_url;
 
@@ -163,16 +163,16 @@
       description: description.trim(),
       category: finalCategory,
       location_found: locationFound.trim() ? locationFound.trim() : null,
+      image_url: newImageUrl,
       status,
       manual_due_date: manualDueDate || null,
-      image_url: newImageUrl,
     };
 
     const { error } = await supabase
       .from("items")
       .update(payload)
       .eq("id", itemId)
-      .select()
+      .select(itemSelectColumns)
       .single();
 
     if (error) {
@@ -193,8 +193,6 @@
         session = nextSession;
         if (!nextSession) {
           goto("/");
-        } else {
-          loadSessionAndItem();
         }
       },
     );
@@ -206,7 +204,7 @@
 </script>
 
 <svelte:head>
-  <title>{headingText} | Library Inventory</title>
+  <title>{headingText} | Lost and Found</title>
 </svelte:head>
 
 <div class="min-h-screen bg-background text-foreground transition-colors duration-200">
@@ -290,22 +288,24 @@
                   id="status-select-trigger"
                   class="w-full justify-between bg-background text-sm"
                 >
-                  {statusLabels[status]}
+                  {status === "claimed" ? "Claimed" : "At library"}
                 </SelectTrigger>
                 <SelectContent>
-                  {#each STATUS_OPTIONS as option}
-                    <SelectItem value={option} label={statusLabels[option]} />
-                  {/each}
+                  <SelectItem value="found" label="At library" />
+                  <SelectItem value="claimed" label="Claimed" />
                 </SelectContent>
               </Select>
             </div>
 
             <div class="space-y-2">
-              <Label class="text-sm" for="due-date-input">Manual pickup deadline</Label>
-              <Input class="text-sm" id="due-date-input" type="date" bind:value={manualDueDate} />
-              <p class="text-xs text-muted-foreground">
-                Leave blank to use the automatic month-end deadline.
-              </p>
+              <Label class="text-sm" for="manual-due-date-input">Pickup deadline override</Label>
+              <Input
+                id="manual-due-date-input"
+                type="date"
+                class="text-sm"
+                bind:value={manualDueDate}
+              />
+              <p class="text-xs text-muted-foreground">Leave blank to use the automatic month-end deadline.</p>
             </div>
 
             <div class="space-y-2 md:col-span-2">

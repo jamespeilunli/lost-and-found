@@ -7,8 +7,7 @@
 <header>
 	<div class="corner">
 		<a href={resolve('/')}>
-			<span aria-hidden="true">LI</span>
-			<span class="sr-only">Library Inventory</span>
+			<img src="/favicon.png" alt="MVHS logo" />
 		</a>
 	</div>
 
@@ -56,28 +55,6 @@
 		width: 2em;
 		height: 2em;
 		object-fit: contain;
-	}
-
-	.corner span[aria-hidden='true'] {
-		display: grid;
-		width: 2em;
-		height: 2em;
-		place-items: center;
-		border: 1px solid currentColor;
-		font-size: 0.75rem;
-		font-weight: 800;
-	}
-
-	.sr-only {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		padding: 0;
-		margin: -1px;
-		overflow: hidden;
-		clip: rect(0, 0, 0, 0);
-		white-space: nowrap;
-		border: 0;
 	}
 
 	nav {

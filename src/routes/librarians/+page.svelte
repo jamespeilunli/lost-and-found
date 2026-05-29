@@ -132,7 +132,7 @@
 </script>
 
 <svelte:head>
-  <title>Librarian Whitelist</title>
+  <title>Librarian whitelist</title>
 </svelte:head>
 
 <div class="min-h-screen bg-background text-foreground transition-colors duration-200">
@@ -146,7 +146,7 @@
           </Button>
           <h1 class="mt-2 text-2xl font-bold leading-tight md:text-3xl">Librarian whitelist</h1>
           <p class="mt-1 text-sm text-muted-foreground">
-            Add the Google account emails that are allowed to manage inventory.
+            Add the Google account emails that can manage inventory.
           </p>
         </div>
       </div>

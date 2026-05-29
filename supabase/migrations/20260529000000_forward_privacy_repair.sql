@@ -1,8 +1,8 @@
--- Privacy-focused inventory refactor:
--- - librarians are controlled by email whitelist
--- - anonymous users can only read active found inventory through a public view
--- - old lost reports are removed from active inventory
--- - librarians can override automatic pickup due dates per item
+-- Forward-only repair for the privacy-focused inventory rewrite.
+-- This normalizes databases where the earlier experimental migrations may
+-- already have run. It intentionally purges old student-created lost reports.
+
+drop view if exists public.public_inventory_items;
 
 alter table public.items
   add column if not exists manual_due_date date;
@@ -16,6 +16,8 @@ create table if not exists public.librarian_emails (
   created_by uuid null
 );
 
+alter table public.items enable row level security;
+alter table public.deleted_items enable row level security;
 alter table public.librarian_emails enable row level security;
 
 do $$
@@ -27,46 +29,37 @@ begin
     join auth.users u on u.id = p.id
     where p.role = 'librarian'
       and u.email is not null
+      and trim(u.email) <> ''
     on conflict (email) do nothing;
   end if;
 end $$;
 
-insert into public.deleted_items (
-  id,
-  title,
-  description,
-  category,
-  status,
-  image_url,
-  location_found,
-  created_at,
-  created_by,
-  manual_due_date
-)
-select
-  id,
-  title,
-  description,
-  category,
-  status,
-  image_url,
-  location_found,
-  created_at,
-  created_by,
-  manual_due_date
-from public.items
-where status = 'lost'
-on conflict (id) do nothing;
-
 delete from public.items
 where status = 'lost';
+
+delete from public.deleted_items
+where status = 'lost';
+
+create index if not exists items_status_created_at_idx
+on public.items (status, created_at desc);
 
 create or replace function public.current_user_email()
 returns text
 language sql
 stable
+security definer
+set search_path = public
 as $$
   select lower(nullif(auth.jwt() ->> 'email', ''));
+$$;
+
+create or replace function public.normalize_librarian_email(raw_email text)
+returns text
+language sql
+immutable
+set search_path = public
+as $$
+  select lower(trim(raw_email));
 $$;
 
 create or replace function public.is_librarian_email()
@@ -95,14 +88,6 @@ begin
     raise exception 'Librarian access required' using errcode = '42501';
   end if;
 end;
-$$;
-
-create or replace function public.normalize_librarian_email(raw_email text)
-returns text
-language sql
-immutable
-as $$
-  select lower(trim(raw_email));
 $$;
 
 create or replace function public.list_librarian_emails()
@@ -195,28 +180,42 @@ begin
   end loop;
 end $$;
 
-create policy "Librarians can read whitelist"
-on public.librarian_emails
-for select
-to authenticated
-using (public.is_librarian_email());
+do $$
+declare
+  existing_policy record;
+begin
+  for existing_policy in
+    select schemaname, tablename, policyname
+    from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and (
+        coalesce(qual, '') ilike '%item-images%'
+        or coalesce(with_check, '') ilike '%item-images%'
+      )
+  loop
+    execute format(
+      'drop policy if exists %I on %I.%I',
+      existing_policy.policyname,
+      existing_policy.schemaname,
+      existing_policy.tablename
+    );
+  end loop;
+end $$;
 
-create policy "Librarians can add whitelist emails"
-on public.librarian_emails
-for insert
-to authenticated
-with check (public.is_librarian_email());
+revoke all on public.items from anon, authenticated;
+revoke all on public.deleted_items from anon, authenticated;
+revoke all on public.librarian_emails from anon, authenticated;
 
-create policy "Librarians can remove whitelist emails"
-on public.librarian_emails
-for delete
-to authenticated
-using (public.is_librarian_email());
+revoke select (id, title, description, category, status, image_url, location_found, created_at, created_by, manual_due_date)
+on public.items from anon, authenticated;
+revoke insert (title, description, category, status, image_url, location_found, created_by, manual_due_date)
+on public.items from anon, authenticated;
+revoke update (title, description, category, status, image_url, location_found, created_by, manual_due_date)
+on public.items from anon, authenticated;
 
-revoke all on public.items from anon;
-revoke all on public.deleted_items from anon;
-revoke all on public.librarian_emails from anon;
 grant usage on schema public to anon, authenticated;
+
 grant select (
   id,
   title,
@@ -228,28 +227,56 @@ grant select (
   created_at,
   manual_due_date
 ) on public.items to anon, authenticated;
-grant select, insert, update, delete on public.items to authenticated;
-grant select, insert, update, delete on public.deleted_items to authenticated;
+
+grant insert (
+  title,
+  description,
+  category,
+  status,
+  image_url,
+  location_found,
+  created_by,
+  manual_due_date
+) on public.items to authenticated;
+
+grant update (
+  title,
+  description,
+  category,
+  status,
+  image_url,
+  location_found,
+  manual_due_date
+) on public.items to authenticated;
+
+grant delete on public.items to authenticated;
+grant select, insert on public.deleted_items to authenticated;
 grant select on public.librarian_emails to authenticated;
+
+revoke execute on function public.current_user_email() from public;
+revoke execute on function public.normalize_librarian_email(text) from public;
+revoke execute on function public.is_librarian_email() from public;
+revoke execute on function public.require_librarian() from public;
+revoke execute on function public.list_librarian_emails() from public;
+revoke execute on function public.add_librarian_email(text) from public;
+revoke execute on function public.remove_librarian_email(text) from public;
+
 grant execute on function public.is_librarian_email() to anon, authenticated;
 grant execute on function public.list_librarian_emails() to authenticated;
 grant execute on function public.add_librarian_email(text) to authenticated;
 grant execute on function public.remove_librarian_email(text) to authenticated;
-
-alter table public.items enable row level security;
-alter table public.deleted_items enable row level security;
-
-create policy "Librarians can read inventory"
-on public.items
-for select
-to authenticated
-using (public.is_librarian_email());
 
 create policy "Public can read found inventory"
 on public.items
 for select
 to anon, authenticated
 using (status = 'found');
+
+create policy "Librarians can read inventory"
+on public.items
+for select
+to authenticated
+using (public.is_librarian_email());
 
 create policy "Librarians can create inventory"
 on public.items
@@ -282,28 +309,23 @@ for insert
 to authenticated
 with check (public.is_librarian_email());
 
-do $$
-declare
-  existing_policy record;
-begin
-  for existing_policy in
-    select schemaname, tablename, policyname
-    from pg_policies
-    where schemaname = 'storage'
-      and tablename = 'objects'
-      and (
-        coalesce(qual, '') ilike '%item-images%'
-        or coalesce(with_check, '') ilike '%item-images%'
-      )
-  loop
-    execute format(
-      'drop policy if exists %I on %I.%I',
-      existing_policy.policyname,
-      existing_policy.schemaname,
-      existing_policy.tablename
-    );
-  end loop;
-end $$;
+create policy "Librarians can read whitelist"
+on public.librarian_emails
+for select
+to authenticated
+using (public.is_librarian_email());
+
+create policy "Librarians can add whitelist emails"
+on public.librarian_emails
+for insert
+to authenticated
+with check (public.is_librarian_email());
+
+create policy "Librarians can remove whitelist emails"
+on public.librarian_emails
+for delete
+to authenticated
+using (public.is_librarian_email());
 
 create policy "Public can read item images"
 on storage.objects
