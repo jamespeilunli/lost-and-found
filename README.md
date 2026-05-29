@@ -37,7 +37,6 @@ The app expects:
 - `items` table
 - `deleted_items` table
 - `item-images` storage bucket
-- `public_inventory_items` view
 - `librarian_emails` table
 - Whitelist RPCs from `supabase/migrations/20260528000000_privacy_inventory_refactor.sql`
 - Google OAuth enabled in Supabase Auth

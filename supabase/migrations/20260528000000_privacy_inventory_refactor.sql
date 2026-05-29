@@ -213,8 +213,11 @@ for delete
 to authenticated
 using (public.is_librarian_email());
 
-create or replace view public.public_inventory_items as
-select
+revoke all on public.items from anon;
+revoke all on public.deleted_items from anon;
+revoke all on public.librarian_emails from anon;
+grant usage on schema public to anon, authenticated;
+grant select (
   id,
   title,
   description,
@@ -224,13 +227,7 @@ select
   location_found,
   created_at,
   manual_due_date
-from public.items
-where status = 'found';
-
-revoke all on public.items from anon;
-revoke all on public.deleted_items from anon;
-revoke all on public.librarian_emails from anon;
-grant select on public.public_inventory_items to anon, authenticated;
+) on public.items to anon, authenticated;
 grant select, insert, update, delete on public.items to authenticated;
 grant select, insert, update, delete on public.deleted_items to authenticated;
 grant select on public.librarian_emails to authenticated;
@@ -247,6 +244,12 @@ on public.items
 for select
 to authenticated
 using (public.is_librarian_email());
+
+create policy "Public can read found inventory"
+on public.items
+for select
+to anon, authenticated
+using (status = 'found');
 
 create policy "Librarians can create inventory"
 on public.items

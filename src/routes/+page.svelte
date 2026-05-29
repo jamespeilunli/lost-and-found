@@ -96,6 +96,7 @@
   let expandedCardDescriptions: Record<string, boolean> = {};
   let pendingItemId: string | null = null;
   let dueDateDrafts: Record<string, string> = {};
+  let loadItemsRequestId = 0;
   $: isLibrarian = userRole === "librarian";
   $: displayedItems = viewingDeleted ? deletedItems : items;
   $: filteredDisplayedItems = getFilteredItems(displayedItems, searchQuery, selectedStatusFilters);
@@ -336,19 +337,19 @@
   async function setViewingDeleted(nextValue: boolean) {
     if (!isLibrarian) return;
     viewingDeleted = nextValue;
-    await loadItems();
+    await loadItems({ librarian: true, showDeleted: nextValue });
   }
 
   async function loadSession() {
     const { data } = await supabase.auth.getSession();
     session = data.session;
-    await loadUserRole(data.session);
+    return await loadUserRole(data.session);
   }
 
   async function loadUserRole(nextSession: Session | null) {
     if (!nextSession?.user) {
       userRole = null;
-      return;
+      return null;
     }
 
     const { data, error } = await supabase.rpc("is_librarian_email");
@@ -356,29 +357,48 @@
       userRole = null;
       authError = "This Google account is not on the librarian whitelist.";
       await supabase.auth.signOut();
-      return;
+      return null;
     }
 
     userRole = "librarian";
     authError = "";
+    return userRole;
   }
 
-  async function loadItems() {
+  async function loadItems(options: { librarian?: boolean; showDeleted?: boolean } = {}) {
+    const requestId = ++loadItemsRequestId;
+    const librarian = options.librarian ?? userRole === "librarian";
+    const showDeleted = librarian && (options.showDeleted ?? viewingDeleted);
+
+    if (!librarian) {
+      viewingDeleted = false;
+      deletedItems = [];
+    }
+
     itemsLoading = true;
     itemsError = "";
 
-    const tableName = isLibrarian ? (viewingDeleted ? "deleted_items" : "items") : "public_inventory_items";
-    let query = supabase.from(tableName).select("*").order("created_at", { ascending: false });
-
-    if (isLibrarian) {
-      query = query.in("status", activeStatusOptions);
-    }
+    const query = librarian
+      ? supabase
+          .from(showDeleted ? "deleted_items" : "items")
+          .select("*")
+          .in("status", activeStatusOptions)
+          .order("created_at", { ascending: false })
+      : supabase
+          .from("items")
+          .select("id,title,description,category,status,image_url,location_found,created_at,manual_due_date")
+          .eq("status", "found")
+          .order("created_at", { ascending: false });
 
     const { data, error } = await query;
 
+    if (requestId !== loadItemsRequestId) {
+      return;
+    }
+
     if (error) {
       itemsError = error.message;
-      if (viewingDeleted) {
+      if (showDeleted) {
         deletedItems = [];
       } else {
         items = [];
@@ -390,7 +410,7 @@
         return getEffectiveDueDate(a).getTime() - getEffectiveDueDate(b).getTime();
       });
 
-      if (viewingDeleted) {
+      if (showDeleted) {
         deletedItems = fetchedItems;
       } else {
         items = fetchedItems;
@@ -421,6 +441,10 @@
 
     const { error } = await supabase.auth.signOut();
     if (error) authError = error.message;
+    session = null;
+    userRole = null;
+    viewingDeleted = false;
+    await loadItems({ librarian: false, showDeleted: false });
 
     authLoading = false;
   }
@@ -523,15 +547,15 @@
     isDark = document.documentElement.classList.contains("dark");
 
     void (async () => {
-      await loadSession();
-      await loadItems();
+      const role = await loadSession();
+      await loadItems({ librarian: role === "librarian", showDeleted: false });
     })();
 
     const { data } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
       session = nextSession;
-      await loadUserRole(nextSession);
+      const role = await loadUserRole(nextSession);
       viewingDeleted = false;
-      await loadItems();
+      await loadItems({ librarian: role === "librarian", showDeleted: false });
     });
 
     const clockInterval = setInterval(() => {
