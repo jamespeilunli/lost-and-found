@@ -76,7 +76,6 @@
 
     if (!isLibrarian) {
       toast.error("You need librarian access to edit inventory.");
-      await supabase.auth.signOut();
       await goto("/");
       return;
     }

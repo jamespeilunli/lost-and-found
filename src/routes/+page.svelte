@@ -41,7 +41,6 @@
   import { Separator } from "$lib/components/ui/separator";
 
   type ItemStatus = "lost" | "found" | "claimed";
-  type UserRole = "librarian";
   type ViewMode = "cards" | "table";
 
   type ItemRow = {
@@ -68,10 +67,9 @@
   const itemSelectColumns = "id,title,description,category,status,image_url,location_found,created_at,manual_due_date";
 
   let session: Session | null = null;
-  let userRole: UserRole | null = null;
+  let isLibrarian = false;
   let authLoading = false;
   let authError = "";
-  let isLoggingOut = false;
 
   let items: ItemRow[] = [];
   let itemsLoading = false;
@@ -86,7 +84,6 @@
   let pendingItemId: string | null = null;
   let dueDateDrafts: Record<string, string> = {};
   let loadItemsRequestId = 0;
-  $: isLibrarian = userRole === "librarian";
 
   // computed list to render (either normal items or deleted items)
   $: displayedItems = viewingDeleted ? deletedItems : items;
@@ -380,17 +377,6 @@
     }
   }
 
-  function clearLocalSupabaseSession() {
-    if (typeof window === "undefined") return;
-
-    for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
-      const key = window.localStorage.key(index);
-      if (key && (key === "supabase.auth.token" || (key.startsWith("sb-") && key.endsWith("-auth-token")))) {
-        window.localStorage.removeItem(key);
-      }
-    }
-  }
-
   async function setViewingDeleted(nextValue: boolean) {
     if (!isLibrarian) return;
     viewingDeleted = nextValue;
@@ -399,30 +385,30 @@
 
   async function loadSession() {
     const { data } = await supabase.auth.getSession();
-    session = data.session;
-    return await loadUserRole(data.session);
+    return await validateLibrarianSession(data.session);
   }
 
-  async function loadUserRole(nextSession: Session | null) {
+  async function validateLibrarianSession(nextSession: Session | null) {
+    session = nextSession;
+
     if (!nextSession?.user) {
-      userRole = null;
-      return null;
+      isLibrarian = false;
+      authError = "";
+      return false;
     }
 
     const { data, error } = await supabase.rpc("is_librarian_email");
     if (error || data !== true) {
-      session = null;
-      userRole = null;
-      authError = "This Google account is not on the librarian whitelist.";
-      await supabase.auth.signOut({ scope: "local" });
-      clearLocalSupabaseSession();
-      return null;
+      isLibrarian = false;
+      authError = "This account is signed in, but it is not approved for librarian tools.";
+      selectedStatusFilters = ["found"];
+      return false;
     }
 
-    userRole = "librarian";
+    isLibrarian = true;
     authError = "";
     selectedStatusFilters = [...activeStatusOptions];
-    return userRole;
+    return true;
   }
 
   function syncDueDateDrafts(list: ItemRow[]) {
@@ -431,7 +417,7 @@
 
   async function loadItems(options: { librarian?: boolean; showDeleted?: boolean } = {}) {
     const requestId = ++loadItemsRequestId;
-    const librarian = options.librarian ?? userRole === "librarian";
+    const librarian = options.librarian ?? isLibrarian;
     const showDeleted = librarian && (options.showDeleted ?? viewingDeleted);
 
     if (!librarian) {
@@ -506,24 +492,27 @@
   async function handleLogout() {
     authLoading = true;
     authError = "";
-    isLoggingOut = true;
     menuOpen = false;
 
     session = null;
-    userRole = null;
+    isLibrarian = false;
     viewingDeleted = false;
     deletedItems = [];
     selectedStatusFilters = ["found"];
 
-    const { error } = await supabase.auth.signOut({ scope: "local" });
-    clearLocalSupabaseSession();
+    const { error } = await supabase.auth.signOut();
     if (error) {
       authError = error.message;
     }
     await loadItems({ librarian: false, showDeleted: false });
 
-    isLoggingOut = false;
     authLoading = false;
+  }
+
+  async function refreshSessionFromStorage() {
+    const librarian = await loadSession();
+    viewingDeleted = false;
+    await loadItems({ librarian, showDeleted: false });
   }
 
   async function updateItemStatus(itemId: string, nextStatus: ItemStatus) {
@@ -629,23 +618,30 @@
     isDark = document.documentElement.classList.contains("dark");
 
     void (async () => {
-      const role = await loadSession();
-      await loadItems({ librarian: role === "librarian", showDeleted: false });
+      await loadItems({ librarian: false, showDeleted: false });
+      const librarian = await loadSession();
+      if (librarian) {
+        await loadItems({ librarian: true, showDeleted: false });
+      }
     })();
 
     const { data } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
-      if (isLoggingOut) {
-        session = null;
-        userRole = null;
-        viewingDeleted = false;
-        return;
-      }
-
-      session = nextSession;
-      const role = await loadUserRole(nextSession);
+      const librarian = await validateLibrarianSession(nextSession);
       viewingDeleted = false;
-      await loadItems({ librarian: role === "librarian", showDeleted: false });
+      await loadItems({ librarian, showDeleted: false });
     });
+
+    const handlePageShow = () => {
+      void refreshSessionFromStorage();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshSessionFromStorage();
+      }
+    };
+
+    window.addEventListener("pageshow", handlePageShow);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     const clockInterval = setInterval(() => {
       now = new Date();
@@ -654,6 +650,8 @@
     return () => {
       data.subscription.unsubscribe();
       clearInterval(clockInterval);
+      window.removeEventListener("pageshow", handlePageShow);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   });
 </script>
@@ -682,13 +680,22 @@
         </div>
 
         <div class="flex items-center gap-3 md:justify-end">
-          {#if session}
+          {#if session && isLibrarian}
             <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
               <div class="text-sm text-muted-foreground">
                 Signed in as <strong>{session.user.email}</strong>
               </div>
               <Badge variant="outline" class="w-fit border-primary/40 text-sm uppercase tracking-wide">
-                {userRole ?? "unknown"}
+                librarian
+              </Badge>
+            </div>
+          {:else if session}
+            <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+              <div class="text-sm text-muted-foreground">
+                Public view as <strong>{session.user.email}</strong>
+              </div>
+              <Badge variant="outline" class="w-fit text-sm uppercase tracking-wide">
+                not approved
               </Badge>
             </div>
           {:else}

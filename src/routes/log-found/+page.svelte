@@ -68,10 +68,6 @@
     const { data: allowed } = await supabase.rpc("is_librarian_email");
     isLibrarian = allowed === true;
     authChecked = true;
-
-    if (!isLibrarian) {
-      await supabase.auth.signOut();
-    }
   }
 
   async function handleSubmitItem() {
