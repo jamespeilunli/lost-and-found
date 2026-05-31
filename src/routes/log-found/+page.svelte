@@ -26,7 +26,6 @@
   import { Textarea } from "$lib/components/ui/textarea";
 
   let session: Session | null = null;
-  let isLibrarian = false;
   let authChecked = false;
 
   let title = "";
@@ -59,24 +58,17 @@
     session = data.session;
 
     if (!session) {
-      isLibrarian = false;
       authChecked = true;
       await goto("/");
       return;
     }
 
-    const { data: allowed } = await supabase.rpc("is_librarian_email");
-    isLibrarian = allowed === true;
     authChecked = true;
   }
 
   async function handleSubmitItem() {
     if (!session?.user) {
       formError = "Please sign in to log an item.";
-      return;
-    }
-    if (!isLibrarian) {
-      formError = "Only librarians can log found items.";
       return;
     }
 
@@ -130,7 +122,9 @@
     const { error } = await supabase.from("items").insert([payload]);
 
     if (error) {
-      formError = "Failed to log item: " + error.message;
+      formError = error.message.toLowerCase().includes("row-level security")
+        ? "This signed-in account is not approved to log inventory."
+        : "Failed to log item: " + error.message;
     } else {
       toast.success("Found item logged.");
       await goto("/");
@@ -201,11 +195,6 @@
       <Alert variant="destructive" class="text-sm">
         <AlertTitle>Sign in required</AlertTitle>
         <AlertDescription>You must be signed in to log a found item.</AlertDescription>
-      </Alert>
-    {:else if !isLibrarian}
-      <Alert variant="destructive" class="text-sm">
-        <AlertTitle>Librarians only</AlertTitle>
-        <AlertDescription>You need librarian access to log found items.</AlertDescription>
       </Alert>
     {:else}
       <Card class="border-border/80 bg-card text-sm shadow-none">

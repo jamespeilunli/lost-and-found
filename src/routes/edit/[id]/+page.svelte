@@ -27,7 +27,6 @@
   import { Textarea } from "$lib/components/ui/textarea";
 
   let session: Session | null = null;
-  let isLibrarian = false;
   const itemId = $page.params.id;
 
   let title = "";
@@ -71,15 +70,6 @@
       return;
     }
 
-    const { data: allowed } = await supabase.rpc("is_librarian_email");
-    isLibrarian = allowed === true;
-
-    if (!isLibrarian) {
-      toast.error("You need librarian access to edit inventory.");
-      await goto("/");
-      return;
-    }
-
     const { data: itemData, error } = await supabase
       .from("items")
       .select(itemSelectColumns)
@@ -87,7 +77,7 @@
       .single();
 
     if (error || !itemData) {
-      toast.error("Item not found");
+      toast.error(error?.message ?? "Item not found");
       await goto("/");
       return;
     }
@@ -175,7 +165,9 @@
       .single();
 
     if (error) {
-      formError = "Failed to update item: " + error.message;
+      formError = error.message.toLowerCase().includes("row-level security")
+        ? "This signed-in account is not approved to update inventory."
+        : "Failed to update item: " + error.message;
     } else {
       toast.success("Item updated successfully.");
       await goto("/");

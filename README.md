@@ -7,7 +7,8 @@ Production: https://mvhs-lost-and-found.vercel.app
 ## Features
 
 - Anonymous public inventory view with search
-- Librarian-only Google sign-in
+- Invite-only librarian email/password sign-in
+- Librarian password setup and reset
 - Librarian-only found item logging
 - Item statuses: `found`, `claimed`
 - Automatic pickup deadlines with optional manual overrides
@@ -41,8 +42,11 @@ The app expects:
 - `deleted_items` table
 - `librarian_emails` table
 - `item-images` storage bucket
-- Whitelist RPCs from `supabase/migrations/20260529000000_forward_privacy_repair.sql`
-- Google OAuth enabled in Supabase Auth
+- RLS policies from the Supabase migrations
+- Email Auth enabled in Supabase Auth
+- Public signups disabled in Supabase Auth
+- Google OAuth disabled in Supabase Auth
+- `/set-password` added to allowed Auth redirect URLs
 
 ## Environment Variables
 
@@ -51,7 +55,10 @@ Create a `.env` file:
 ```bash
 PUBLIC_SUPABASE_URL=your_supabase_project_url
 PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 ```
+
+`SUPABASE_SERVICE_ROLE_KEY` is server-only. Do not expose it as a public environment variable.
 
 ## Development
 
