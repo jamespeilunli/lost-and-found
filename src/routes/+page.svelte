@@ -10,7 +10,6 @@
     EllipsisVertical,
     LogOut,
     Users,
-    Mail,
     Search,
     LayoutGrid,
     TableProperties,
@@ -22,7 +21,7 @@
     Hourglass,
   } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
-  import { supabase } from "$lib/supabaseClient";
+  import { publicSupabase, supabase } from "$lib/supabaseClient";
   import { toast } from "svelte-sonner";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
   import { Badge } from "$lib/components/ui/badge";
@@ -41,33 +40,31 @@
   import { Select, SelectContent, SelectItem, SelectTrigger } from "$lib/components/ui/select";
   import { Separator } from "$lib/components/ui/separator";
 
-  type ItemStatus = "lost" | "found" | "claimed";
-  type UserRole = "user" | "librarian";
+  type ItemStatus = "found" | "claimed";
   type ViewMode = "cards" | "table";
 
   type ItemRow = {
     id: string;
     title: string;
-    description: string;
-    category: string;
+    description: string | null;
+    category: string | null;
     status: ItemStatus;
     image_url: string | null;
     location_found: string | null;
     created_at: string;
-    created_by: string;
+    manual_due_date: string | null;
   };
 
-  const statusOptions: ItemStatus[] = ["lost", "found", "claimed"];
+  const statusOptions: ItemStatus[] = ["found", "claimed"];
   const statusLabels: Record<ItemStatus, string> = {
-    lost: "Lost",
     found: "At library",
     claimed: "Claimed",
   };
   const toolbarDropdownTriggerClass =
     "flex h-8 w-[176px] items-center justify-between gap-1.5 rounded-none border border-input bg-transparent py-2 pr-2 pl-2.5 text-xs whitespace-nowrap transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 aria-expanded:bg-muted [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0";
+  const itemSelectColumns = "id,title,description,category,status,image_url,location_found,created_at,manual_due_date";
 
   let session: Session | null = null;
-  let userRole: UserRole | null = null;
   let authLoading = false;
   let authError = "";
 
@@ -76,13 +73,15 @@
   let itemsError = "";
   let deletedItems: ItemRow[] = [];
   let viewingDeleted = false;
-  let submitterEmails: Record<string, string> = {};
   let searchQuery = "";
   let viewMode: ViewMode = "cards";
-  let selectedStatusFilters: string[] = [...statusOptions];
+  let selectedStatusFilters: string[] = ["found"];
   let expandedTableDescriptions: Record<string, boolean> = {};
   let expandedCardDescriptions: Record<string, boolean> = {};
-  $: isLibrarian = userRole === "librarian";
+  let pendingItemId: string | null = null;
+  let dueDateDrafts: Record<string, string> = {};
+  let loadItemsRequestId = 0;
+  $: isLibrarian = Boolean(session);
 
   // computed list to render (either normal items or deleted items)
   $: displayedItems = viewingDeleted ? deletedItems : items;
@@ -122,8 +121,6 @@
     if (status === "claimed") {
       return "bg-sky-100 text-sky-900 uppercase dark:bg-sky-950 dark:text-sky-300";
     }
-
-    return "bg-primary/20 text-foreground uppercase dark:bg-primary/25";
   }
 
   function formatStatusLabel(status: ItemStatus) {
@@ -166,10 +163,21 @@
 
   // The earliest month-end clearing that occurs after the item has been at the
   // library for the full grace period.
-  function getItemDonationDate(createdAt: string) {
+  function getAutomaticDueDate(createdAt: string) {
     const eligibleFrom = new Date(createdAt);
     eligibleFrom.setDate(eligibleFrom.getDate() + GRACE_PERIOD_DAYS);
     return getNextClearingDate(eligibleFrom);
+  }
+
+  function parseManualDueDate(value: string | null) {
+    if (!value) return null;
+    const [year, month, day] = value.split("-").map(Number);
+    if (!year || !month || !day) return null;
+    return new Date(year, month - 1, day, 23, 59, 59, 999);
+  }
+
+  function getItemDonationDate(item: ItemRow) {
+    return parseManualDueDate(item.manual_due_date) ?? getAutomaticDueDate(item.created_at);
   }
 
   function getCountdown(target: Date, current: Date): Countdown {
@@ -185,6 +193,10 @@
 
   function formatClearingDate(date: Date) {
     return date.toLocaleDateString(undefined, { month: "long", day: "numeric" });
+  }
+
+  function formatDueDate(date: Date) {
+    return date.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
   }
 
   function formatCountdown(c: Countdown) {
@@ -331,8 +343,8 @@
     return selectedStatuses.map((status) => formatStatusLabel(status as ItemStatus)).join(", ");
   }
 
-  function shouldShowDescriptionToggle(description: string, maxLength: number) {
-    return description.trim().length > maxLength;
+  function shouldShowDescriptionToggle(description: string | null, maxLength: number) {
+    return (description ?? "").trim().length > maxLength;
   }
 
   function toggleTableDescription(itemId: string) {
@@ -361,144 +373,103 @@
   }
 
   async function setViewingDeleted(nextValue: boolean) {
+    if (!isLibrarian) return;
     viewingDeleted = nextValue;
 
     if (viewingDeleted) {
-      await loadDeletedItems();
+      await loadItems({ signedIn: true, showDeleted: true });
       return;
     }
 
-    await loadItems();
+    await loadItems({ signedIn: true, showDeleted: false });
   }
 
   async function loadSession() {
     const { data } = await supabase.auth.getSession();
     session = data.session;
-    await loadUserRole(data.session?.user.id);
+    selectedStatusFilters = data.session ? [...statusOptions] : ["found"];
+    return data.session;
   }
 
-  async function loadUserRole(userId?: string) {
-    if (!userId) {
-      userRole = null;
-      submitterEmails = {};
-      return;
-    }
-
-    const { data, error } = await supabase.from("profiles").select("role").eq("id", userId).maybeSingle();
-
-    if (error) {
-      userRole = null;
-      return;
-    }
-
-    userRole = (data?.role as UserRole | null) ?? "user";
-
-    if (userRole === "librarian") {
-      await loadSubmitterEmails();
-    } else {
-      submitterEmails = {};
-    }
+  function syncDueDateDrafts(list: ItemRow[]) {
+    dueDateDrafts = Object.fromEntries(list.map((item) => [item.id, item.manual_due_date ?? ""]));
   }
 
-  async function loadSubmitterEmails() {
-    const { data, error } = await supabase.rpc("list_profiles_with_email");
-    if (error || !data) return;
-    const map: Record<string, string> = {};
-    for (const row of data as { id: string; email: string | null }[]) {
-      if (row.email) map[row.id] = row.email;
-    }
-    submitterEmails = map;
+  function isAuthorizationError(message: string) {
+    const normalized = message.toLowerCase();
+    return normalized.includes("row-level security") || normalized.includes("permission denied") || normalized.includes("librarian access");
   }
 
-  async function loadItems() {
+  async function loadItems(options: { signedIn?: boolean; showDeleted?: boolean } = {}) {
+    const requestId = ++loadItemsRequestId;
+    const signedIn = options.signedIn ?? isLibrarian;
+    const showDeleted = signedIn && (options.showDeleted ?? viewingDeleted);
     itemsLoading = true;
     itemsError = "";
-
-    // Choose which table to read from based on the tab
-    const currentTable = viewingDeleted ? "deleted_items" : "items";
-
-    const { data, error } = await supabase.from(currentTable).select("*").order("created_at", { ascending: false });
-
-    if (error) {
-      itemsError = error.message;
-      items = [];
-    } else {
-      let fetchedItems = data as ItemRow[];
-
-      // Sort logic:
-      // 1. User's own items first
-      // 2. Lost items
-      // 3. Other items (found/claimed)
-      // 4. Fallback to created_at (already sorted by Supabase)
-      const currentUserId = session?.user?.id;
-
-      fetchedItems.sort((a, b) => {
-        const aIsOwner = a.created_by === currentUserId;
-        const bIsOwner = b.created_by === currentUserId;
-
-        // 1. Prioritize user's own items
-        if (aIsOwner && !bIsOwner) return -1;
-        if (!aIsOwner && bIsOwner) return 1;
-
-        // 2. Prioritize "lost" status
-        const aIsLost = a.status === "lost";
-        const bIsLost = b.status === "lost";
-
-        if (aIsLost && !bIsLost) return -1;
-        if (!aIsLost && bIsLost) return 1;
-
-        // Maintain created_at order if all else is equal
-        return 0;
-      });
-
-      items = fetchedItems;
-    }
-
-    itemsLoading = false;
-  }
-
-  async function loadDeletedItems() {
-    itemsLoading = true;
-    itemsError = "";
-
-    const { data, error } = await supabase.from("deleted_items").select("*").order("created_at", { ascending: false });
-
-    if (error) {
-      itemsError = error.message;
-      deletedItems = [];
-    } else {
-      deletedItems = (data ?? []) as ItemRow[];
-    }
-
-    itemsLoading = false;
-  }
-
-  async function handleGoogleSignIn() {
-    authLoading = true;
     authError = "";
 
-    const redirectTo = typeof window !== "undefined" ? `${window.location.origin}` : undefined;
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo },
-    });
-
-    if (error) {
-      authError = error.message;
+    if (!signedIn) {
+      viewingDeleted = false;
+      deletedItems = [];
+      selectedStatusFilters = ["found"];
     }
 
-    authLoading = false;
+    const query = signedIn
+      ? supabase
+          .from(showDeleted ? "deleted_items" : "items")
+          .select(itemSelectColumns)
+          .in("status", statusOptions)
+          .order("created_at", { ascending: false })
+      : publicSupabase
+          .from("items")
+          .select(itemSelectColumns)
+          .eq("status", "found")
+          .order("created_at", { ascending: false });
+
+    const { data, error } = await query;
+
+    if (requestId !== loadItemsRequestId) return;
+
+    if (error) {
+      itemsError = error.message;
+      if (isAuthorizationError(error.message)) {
+        authError = "This signed-in account is not approved for librarian tools.";
+      }
+      if (showDeleted) {
+        deletedItems = [];
+      } else {
+        items = [];
+      }
+    } else {
+      const fetchedItems = ((data ?? []) as ItemRow[]).sort(
+        (a, b) => getItemDonationDate(a).getTime() - getItemDonationDate(b).getTime(),
+      );
+
+      if (showDeleted) {
+        deletedItems = fetchedItems;
+      } else {
+        items = fetchedItems;
+      }
+      syncDueDateDrafts(fetchedItems);
+    }
+
+    itemsLoading = false;
   }
 
   async function handleLogout() {
     authLoading = true;
     authError = "";
+    session = null;
+    viewingDeleted = false;
+    deletedItems = [];
+    selectedStatusFilters = ["found"];
 
     const { error } = await supabase.auth.signOut();
     if (error) {
       authError = error.message;
     }
 
+    await loadItems({ signedIn: false, showDeleted: false });
     authLoading = false;
   }
 
@@ -511,7 +482,7 @@
       .from("items")
       .update({ status: nextStatus })
       .eq("id", itemId)
-      .select()
+      .select(itemSelectColumns)
       .single();
 
     if (error) {
@@ -521,41 +492,66 @@
     }
 
     items = items.map((item) => (item.id === itemId ? (data as ItemRow) : item));
+    syncDueDateDrafts(items);
     toast.success(`Item marked as ${formatStatusLabel(nextStatus).toLowerCase()}.`);
   }
 
-  async function deleteItem(itemId: string) {
-    const item = items.find((i) => i.id === itemId);
-    const isOwner = session?.user?.id === item?.created_by;
+  async function updateItemDueDate(itemId: string) {
+    if (!isLibrarian) return;
 
-    if (!isLibrarian && !isOwner) {
+    const nextDueDate = dueDateDrafts[itemId]?.trim() || null;
+    pendingItemId = itemId;
+    const { data, error } = await supabase
+      .from("items")
+      .update({ manual_due_date: nextDueDate })
+      .eq("id", itemId)
+      .select(itemSelectColumns)
+      .single();
+    pendingItemId = null;
+
+    if (error) {
+      itemsError = error.message;
+      toast.error("Could not update pickup deadline: " + error.message);
       return;
     }
-    // Try to archive the item into `deleted_items` first so we keep a record.
+
+    items = items.map((item) => (item.id === itemId ? (data as ItemRow) : item));
+    syncDueDateDrafts(items);
+    toast.success(nextDueDate ? "Pickup deadline updated." : "Pickup deadline returned to automatic.");
+  }
+
+  async function deleteItem(itemId: string) {
+    if (!isLibrarian) return;
+
+    const item = items.find((i) => i.id === itemId);
+    if (!item) return;
+
     try {
+      pendingItemId = itemId;
       const toInsert = {
-        // copy all known item fields; keep id so deleted_items mirrors items
-        id: item?.id,
-        title: item?.title,
-        description: item?.description,
-        category: item?.category,
-        status: item?.status,
-        image_url: item?.image_url,
-        location_found: item?.location_found,
-        created_at: item?.created_at,
-        created_by: item?.created_by,
+        id: item.id,
+        title: item.title,
+        description: item.description,
+        category: item.category,
+        status: item.status,
+        image_url: item.image_url,
+        location_found: item.location_found,
+        created_at: item.created_at,
+        created_by: session?.user.id ?? null,
+        manual_due_date: item.manual_due_date,
       };
 
-      const { data: insertData, error: insertError } = await supabase.from("deleted_items").insert([toInsert]).select();
+      const { error: insertError } = await supabase.from("deleted_items").insert([toInsert]);
 
       if (insertError) {
+        pendingItemId = null;
         itemsError = insertError.message;
         toast.error("Failed to archive deleted item: " + insertError.message);
         return;
       }
 
-      // Now delete from the original table
-      const { data, error } = await supabase.from("items").delete().eq("id", itemId).select();
+      const { error } = await supabase.from("items").delete().eq("id", itemId);
+      pendingItemId = null;
 
       if (error) {
         itemsError = error.message;
@@ -563,20 +559,12 @@
         return;
       }
 
-      if (!data || data.length === 0) {
-        alert("Failed to delete item. You may lack permission, or Row Level Security (RLS) is blocking the action.");
-        return;
-      }
-
-      // Update local state
       items = items.filter((item) => item.id !== itemId);
-      // If we're viewing deleted items, reload that list so the new row appears
-      if (viewingDeleted) {
-        await loadDeletedItems();
-      }
+      syncDueDateDrafts(items);
 
       toast.success("Item deleted and archived successfully.");
     } catch (err) {
+      pendingItemId = null;
       itemsError = (err as Error).message;
       toast.error("An unexpected error occurred: " + (err as Error).message);
     }
@@ -585,13 +573,19 @@
   onMount(() => {
     isDark = document.documentElement.classList.contains("dark");
 
-    loadSession();
-    loadItems();
+    void (async () => {
+      await loadItems({ signedIn: false, showDeleted: false });
+      const restoredSession = await loadSession();
+      if (restoredSession) {
+        await loadItems({ signedIn: true, showDeleted: false });
+      }
+    })();
 
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       session = nextSession;
-      loadUserRole(nextSession?.user.id);
-      loadItems();
+      viewingDeleted = false;
+      selectedStatusFilters = nextSession ? [...statusOptions] : ["found"];
+      void loadItems({ signedIn: Boolean(nextSession), showDeleted: false });
     });
 
     const clockInterval = setInterval(() => {
@@ -632,7 +626,7 @@
           {/if}
           <div>
             <h1 class="text-left text-2xl font-bold leading-tight md:text-3xl">Library Lost &amp; Found</h1>
-            <p class="mt-1 text-sm text-muted-foreground">Browse reported items and check their status.</p>
+            <p class="mt-1 text-sm text-muted-foreground">Browse items currently at the library.</p>
           </div>
         </div>
 
@@ -643,12 +637,12 @@
                 Signed in as <strong>{session.user.email}</strong>
               </div>
               <Badge variant="outline" class="w-fit border-primary/40 text-sm uppercase tracking-wide">
-                {userRole ?? "unknown"}
+                librarian
               </Badge>
             </div>
           {:else}
-            <Button class="w-full text-sm sm:w-auto" onclick={handleGoogleSignIn} disabled={authLoading}>
-              {authLoading ? "Redirecting..." : "Sign in to report an item"}
+            <Button href="/sign-in" class="w-full text-sm sm:w-auto">
+              Librarian sign in
             </Button>
           {/if}
 
@@ -698,7 +692,7 @@
                   <span>About</span>
                 </a>
 
-                {#if session && isLibrarian}
+                {#if session}
                   <a
                     href="/librarians"
                     role="menuitem"
@@ -767,9 +761,9 @@
 
     {#if isLibrarian}
       <Alert class="mb-6 border-primary/40 bg-primary/10 py-3 text-sm">
-        <AlertTitle>Librarian View</AlertTitle>
-        <AlertDescription>
-          You can update statuses, review archived records, and remove reports.
+          <AlertTitle>Librarian View</AlertTitle>
+          <AlertDescription>
+          You can update statuses, adjust pickup deadlines, review archived records, and remove items.
         </AlertDescription>
       </Alert>
     {/if}
@@ -779,7 +773,7 @@
         <div class="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
           <div class="space-y-1">
             <CardTitle class="text-xl md:text-2xl">
-              {viewingDeleted ? "Archived records" : "Reported items"}
+              {viewingDeleted ? "Archived records" : "Library inventory"}
             </CardTitle>
             {#if searchQuery.trim()}
               <CardDescription class="text-sm">
@@ -804,7 +798,7 @@
                   bind:value={searchQuery}
                   class="h-10 bg-background pl-8 text-sm md:text-sm"
                   placeholder={viewingDeleted ? "Search archived items" : "Search by title, category, location, or description"}
-                  aria-label={viewingDeleted ? "Search archived items" : "Search reported items"}
+                  aria-label={viewingDeleted ? "Search archived items" : "Search inventory"}
                 />
               </div>
 
@@ -814,7 +808,7 @@
                     variant="ghost"
                     size="icon"
                     class="size-10 border border-border/70 bg-background text-muted-foreground hover:text-foreground"
-                    onclick={loadItems}
+                    onclick={() => loadItems({ signedIn: isLibrarian, showDeleted: viewingDeleted })}
                     disabled={itemsLoading}
                     aria-label="Refresh items"
                     title="Refresh"
@@ -822,21 +816,10 @@
                     <RefreshCw size={16} class={itemsLoading ? "animate-spin" : ""} />
                   </Button>
                 </div>
-                {#if session}
-                  <Button href="/submit" class="gap-1.5 text-sm">
+                {#if isLibrarian}
+                  <Button href="/log-found" variant="secondary" class="gap-1.5 text-sm">
                     <Plus size={16} />
-                    <span>Report lost item</span>
-                  </Button>
-                  {#if isLibrarian}
-                    <Button href="/log-found" variant="secondary" class="gap-1.5 text-sm">
-                      <Plus size={16} />
-                      <span>Log found item</span>
-                    </Button>
-                  {/if}
-                {:else}
-                  <Button variant="secondary" class="gap-1.5 text-sm" disabled>
-                    <Plus size={16} />
-                    <span>Sign in to report</span>
+                    <span>Log found item</span>
                   </Button>
                 {/if}
               </div>
@@ -885,7 +868,7 @@
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
                       <DropdownMenuCheckboxGroup bind:value={selectedStatusFilters}>
-                        {#each statusOptions as option}
+                        {#each (isLibrarian ? statusOptions : (["found"] as ItemStatus[])) as option}
                           <DropdownMenuCheckboxItem value={option} closeOnSelect={false}>
                             {formatStatusLabel(option)}
                           </DropdownMenuCheckboxItem>
@@ -947,15 +930,14 @@
             <AlertDescription>{itemsError}</AlertDescription>
           </Alert>
         {:else if displayedItems.length === 0}
-          <p class="italic text-muted-foreground">No reports yet. Add the first item report.</p>
+          <p class="italic text-muted-foreground">No items match the current view.</p>
         {:else if filteredDisplayedItems.length === 0}
           <p class="italic text-muted-foreground">No items match the current filters.</p>
         {:else}
           {#if viewMode === "cards"}
             <div class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
               {#each filteredDisplayedItems as item (item.id)}
-                {@const showItemActions =
-                  !viewingDeleted && (isLibrarian || (session && session.user.id === item.created_by))}
+                {@const showItemActions = !viewingDeleted && isLibrarian}
                 <Card class="border-border/80 bg-card py-0">
                   {#if item.image_url}
                     <img src={item.image_url} alt={item.title} class="h-[clamp(16rem,28vw,20rem)] w-full object-cover" />
@@ -974,7 +956,7 @@
                     </div>
                     <div>
                       <p class={`text-sm text-muted-foreground ${expandedCardDescriptions[item.id] ? "" : "line-clamp-4"}`}>
-                        {item.description}
+                        {item.description || "No description provided."}
                       </p>
                       {#if shouldShowDescriptionToggle(item.description, 220)}
                         <button
@@ -989,7 +971,7 @@
                     </div>
                     <div class="flex flex-wrap gap-2 text-sm text-muted-foreground">
                       {#if !viewingDeleted && item.status === "found"}
-                        {@const itemDonationDate = getItemDonationDate(item.created_at)}
+                        {@const itemDonationDate = getItemDonationDate(item)}
                         {@const itemCountdown = getCountdown(itemDonationDate, now)}
                         <div
                           class={`inline-flex max-w-full items-center gap-2 rounded-full px-2.5 py-1.5 font-medium ${urgencyPillClass[itemCountdown.level]}`}
@@ -999,6 +981,12 @@
                           <Hourglass size={15} class="shrink-0" />
                           <span class="tabular-nums">{formatCountdown(itemCountdown)} left</span>
                         </div>
+                        {#if isLibrarian}
+                          <div class="inline-flex max-w-full items-center gap-2 rounded-full bg-muted/55 px-2.5 py-1.5">
+                            <CalendarDays size={15} class="shrink-0 text-primary" />
+                            <span>Due {formatDueDate(itemDonationDate)}</span>
+                          </div>
+                        {/if}
                       {/if}
                       <div
                         class="inline-flex max-w-full items-center gap-2 rounded-full bg-muted/55 px-2.5 py-1.5"
@@ -1026,18 +1014,24 @@
                         <CalendarDays size={15} class="shrink-0 text-primary" />
                         <span>{formatItemDate(item.created_at)}</span>
                       </div>
-                      {#if isLibrarian && submitterEmails[item.created_by]}
-                        <a
-                          href={`mailto:${submitterEmails[item.created_by]}?subject=${encodeURIComponent(`Re: ${item.title}`)}`}
-                          class="inline-flex max-w-full items-center gap-2 rounded-full bg-muted/55 px-2.5 py-1.5 hover:bg-muted"
-                          title={`Email submitter: ${submitterEmails[item.created_by]}`}
-                          aria-label={`Email submitter: ${submitterEmails[item.created_by]}`}
-                        >
-                          <Mail size={15} class="shrink-0 text-primary" />
-                          <span class="truncate">{submitterEmails[item.created_by]}</span>
-                        </a>
-                      {/if}
                     </div>
+                    {#if isLibrarian && !viewingDeleted && item.status === "found"}
+                      <div class="flex flex-col gap-2 border-t border-border/80 pt-4 sm:flex-row sm:items-end">
+                        <div class="min-w-0 flex-1 space-y-1">
+                          <p class="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Pickup deadline override</p>
+                          <Input type="date" class="h-9 bg-background text-sm" bind:value={dueDateDrafts[item.id]} />
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          class="text-sm"
+                          onclick={() => updateItemDueDate(item.id)}
+                          disabled={pendingItemId === item.id}
+                        >
+                          Save date
+                        </Button>
+                      </div>
+                    {/if}
                   </CardContent>
 
                   {#if showItemActions}
@@ -1059,9 +1053,7 @@
                             </SelectContent>
                           </Select>
                         {/if}
-                        {#if session && session.user.id === item.created_by}
-                          <Button href="/edit/{item.id}" variant="outline" size="sm" class="text-sm">Edit</Button>
-                        {/if}
+                        <Button href={`/edit/${item.id}`} variant="outline" size="sm" class="text-sm">Edit</Button>
                       </div>
                       <Button
                         variant="destructive"
@@ -1104,7 +1096,7 @@
                     <th class="px-4 py-3 font-medium">Reported</th>
                     <th class="px-4 py-3 font-medium">Until donation</th>
                     {#if isLibrarian}
-                      <th class="px-4 py-3 font-medium">Submitter</th>
+                      <th class="px-4 py-3 font-medium">Pickup deadline</th>
                     {/if}
                     <th class="px-4 py-3 font-medium">Actions</th>
                   </tr>
@@ -1112,7 +1104,7 @@
                 <tbody>
                   {#each filteredDisplayedItems as item (item.id)}
                     {@const showItemActions =
-                      !viewingDeleted && (isLibrarian || (session && session.user.id === item.created_by))}
+                      !viewingDeleted && isLibrarian}
                     <tr class="border-t border-border/80 align-top">
                       <td class="px-4 py-4">
                         <div class="flex items-start gap-3">
@@ -1127,7 +1119,7 @@
                             <div class="truncate pr-2 font-medium">{item.title}</div>
                             <div class="max-w-none">
                               <p class={`text-muted-foreground ${expandedTableDescriptions[item.id] ? "" : "line-clamp-2"}`}>
-                                {item.description}
+                                {item.description || "No description provided."}
                               </p>
                               {#if shouldShowDescriptionToggle(item.description, 120)}
                                 <button
@@ -1165,7 +1157,7 @@
                       </td>
                       <td class="px-4 py-4 whitespace-nowrap">
                         {#if !viewingDeleted && item.status === "found"}
-                          {@const itemDonationDate = getItemDonationDate(item.created_at)}
+                          {@const itemDonationDate = getItemDonationDate(item)}
                           {@const itemCountdown = getCountdown(itemDonationDate, now)}
                           <div
                             class={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${urgencyPillClass[itemCountdown.level]}`}
@@ -1180,19 +1172,21 @@
                       </td>
                       {#if isLibrarian}
                         <td class="px-4 py-4">
-                          {#if submitterEmails[item.created_by]}
-                            <div class="w-full">
-                              <a
-                                href={`mailto:${submitterEmails[item.created_by]}?subject=${encodeURIComponent(`Re: ${item.title}`)}`}
-                                class="inline-flex w-full min-w-0 items-center gap-2 text-primary hover:underline"
-                                title={submitterEmails[item.created_by]}
+                          {#if !viewingDeleted && item.status === "found"}
+                            <div class="flex min-w-[220px] items-center gap-2">
+                              <Input type="date" class="h-8 bg-background text-xs" bind:value={dueDateDrafts[item.id]} />
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                class="text-xs"
+                                onclick={() => updateItemDueDate(item.id)}
+                                disabled={pendingItemId === item.id}
                               >
-                                <Mail size={15} class="shrink-0" />
-                                <span class="block truncate">{submitterEmails[item.created_by]}</span>
-                              </a>
+                                Save
+                              </Button>
                             </div>
                           {:else}
-                            <span class="text-muted-foreground">Unavailable</span>
+                            <span class="text-muted-foreground">Automatic</span>
                           {/if}
                         </td>
                       {/if}
@@ -1228,9 +1222,7 @@
                                 </div>
                               {/if}
                               <div class="mt-2 flex flex-col gap-1">
-                                {#if session && session.user.id === item.created_by}
-                                  <Button href="/edit/{item.id}" variant="outline" size="sm" class="justify-start text-sm">Edit item</Button>
-                                {/if}
+                                <Button href={`/edit/${item.id}`} variant="outline" size="sm" class="justify-start text-sm">Edit item</Button>
                                 <Button
                                   variant="destructive"
                                   size="sm"

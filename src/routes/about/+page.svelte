@@ -35,13 +35,13 @@
       <CardHeader>
         <CardTitle>Lost and Found</CardTitle>
         <CardDescription class="text-sm">
-          A library lost-and-found app for students and librarians.
+          A library lost-and-found inventory app.
         </CardDescription>
       </CardHeader>
       <CardContent class="space-y-4">
         <p class="text-sm leading-6 text-muted-foreground">
-          Students can report lost items and browse the inventory. Librarians can log found items,
-          update statuses, and keep records organized in one place.
+          Anyone can browse items currently at the library. Librarians can log found items,
+          update statuses, manage pickup deadlines, and keep records organized in one place.
         </p>
         <p class="text-sm leading-6 text-muted-foreground">
           The project is meant to make it easier to check whether an item has been found without

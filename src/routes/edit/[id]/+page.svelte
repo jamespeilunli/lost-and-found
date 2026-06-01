@@ -44,24 +44,12 @@
   let selectedCategory = "";
   let customCategory = "";
   let locationFound = "";
-  let status = "lost";
+  let status = "found";
+  let manualDueDate = "";
   let imageUrl: string | null = null;
 
-  $: locationLabel = status === "lost" ? "Last seen location" : "Location found";
-  $: headingText =
-    status === "lost"
-      ? "Edit lost item report"
-      : status === "found"
-        ? "Edit item at library"
-        : status === "claimed"
-          ? "Edit claimed item"
-          : "Edit item";
-  $: subtitleText =
-    status === "lost"
-      ? "Update the details of the item you reported lost."
-      : status === "found"
-        ? "Update the details of this item at the library."
-        : "Update this item's details without changing its status.";
+  $: headingText = status === "claimed" ? "Edit claimed item" : "Edit item at library";
+  $: subtitleText = "Update the inventory details and pickup deadline.";
 
   let imageFile: File | null = null;
   let imageInput: HTMLInputElement | null = null;
@@ -71,6 +59,8 @@
   let pageLoading = true;
 
   const imageBucket = "item-images";
+  const itemSelectColumns =
+    "id,title,description,category,status,image_url,location_found,created_at,manual_due_date";
 
   async function loadSessionAndItem() {
     const { data: authData } = await supabase.auth.getSession();
@@ -82,18 +72,18 @@
 
     const { data: itemData, error } = await supabase
       .from("items")
-      .select("*")
+      .select(itemSelectColumns)
       .eq("id", itemId)
       .single();
 
     if (error || !itemData) {
-      toast.error("Item not found");
+      toast.error(error?.message ?? "Item not found");
       await goto("/");
       return;
     }
 
-    if (!session || itemData.created_by !== session.user.id) {
-      toast.error("You don't have permission to edit this item");
+    if (itemData.status === "lost") {
+      toast.error("Lost reports are no longer editable.");
       await goto("/");
       return;
     }
@@ -108,7 +98,8 @@
       customCategory = itemData.category;
     }
     locationFound = itemData.location_found || "";
-    status = itemData.status || "lost";
+    status = itemData.status || "found";
+    manualDueDate = itemData.manual_due_date || "";
     imageUrl = itemData.image_url;
 
     pageLoading = false;
@@ -162,18 +153,21 @@
       category: finalCategory,
       location_found: locationFound.trim() ? locationFound.trim() : null,
       image_url: newImageUrl,
+      status,
+      manual_due_date: manualDueDate || null,
     };
 
     const { error } = await supabase
       .from("items")
       .update(payload)
       .eq("id", itemId)
-      .eq("created_by", session.user.id)
-      .select()
+      .select(itemSelectColumns)
       .single();
 
     if (error) {
-      formError = "Failed to update item: " + error.message;
+      formError = error.message.toLowerCase().includes("row-level security")
+        ? "This signed-in account is not approved to update inventory."
+        : "Failed to update item: " + error.message;
     } else {
       toast.success("Item updated successfully.");
       await goto("/");
@@ -274,8 +268,35 @@
             </div>
 
             <div class="space-y-2">
-              <Label class="text-sm" for="location-input">{locationLabel}</Label>
+              <Label class="text-sm" for="location-input">Location found</Label>
               <Input class="text-sm" id="location-input" type="text" bind:value={locationFound} />
+            </div>
+
+            <div class="space-y-2">
+              <Label class="text-sm" for="status-select-trigger">Status</Label>
+              <Select type="single" bind:value={status}>
+                <SelectTrigger
+                  id="status-select-trigger"
+                  class="w-full justify-between bg-background text-sm"
+                >
+                  {status === "claimed" ? "Claimed" : "At library"}
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="found" label="At library" />
+                  <SelectItem value="claimed" label="Claimed" />
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div class="space-y-2">
+              <Label class="text-sm" for="manual-due-date-input">Pickup deadline override</Label>
+              <Input
+                id="manual-due-date-input"
+                type="date"
+                class="text-sm"
+                bind:value={manualDueDate}
+              />
+              <p class="text-xs text-muted-foreground">Leave blank to use the automatic month-end deadline.</p>
             </div>
 
             <div class="space-y-2 md:col-span-2">

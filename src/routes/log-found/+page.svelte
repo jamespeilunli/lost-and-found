@@ -25,10 +25,7 @@
   } from "$lib/components/ui/select";
   import { Textarea } from "$lib/components/ui/textarea";
 
-  type UserRole = "user" | "librarian";
-
   let session: Session | null = null;
-  let userRole: UserRole | null = null;
   let authChecked = false;
 
   let title = "";
@@ -46,6 +43,7 @@
   let selectedCategory = "";
   let customCategory = "";
   let locationFound = "";
+  let manualDueDate = "";
   let imageFile: File | null = null;
   let imageInput: HTMLInputElement | null = null;
 
@@ -55,36 +53,22 @@
   const defaultStatus = "found";
   const imageBucket = "item-images";
 
-  $: isLibrarian = userRole === "librarian";
-
   async function loadSession() {
     const { data } = await supabase.auth.getSession();
     session = data.session;
 
     if (!session) {
-      userRole = null;
       authChecked = true;
       await goto("/");
       return;
     }
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", session.user.id)
-      .maybeSingle();
-
-    userRole = (profile?.role as UserRole | null) ?? "user";
     authChecked = true;
   }
 
   async function handleSubmitItem() {
     if (!session?.user) {
       formError = "Please sign in to log an item.";
-      return;
-    }
-    if (!isLibrarian) {
-      formError = "Only librarians can log found items.";
       return;
     }
 
@@ -132,16 +116,15 @@
       image_url: imageUrl,
       location_found: locationFound.trim() ? locationFound.trim() : null,
       created_by: session.user.id,
+      manual_due_date: manualDueDate || null,
     };
 
-    const { error } = await supabase
-      .from("items")
-      .insert([payload])
-      .select()
-      .single();
+    const { error } = await supabase.from("items").insert([payload]);
 
     if (error) {
-      formError = "Failed to log item: " + error.message;
+      formError = error.message.toLowerCase().includes("row-level security")
+        ? "This signed-in account is not approved to log inventory."
+        : "Failed to log item: " + error.message;
     } else {
       toast.success("Found item logged.");
       await goto("/");
@@ -156,6 +139,7 @@
     selectedCategory = "";
     customCategory = "";
     locationFound = "";
+    manualDueDate = "";
     imageFile = null;
     if (imageInput) {
       imageInput.value = "";
@@ -211,11 +195,6 @@
       <Alert variant="destructive" class="text-sm">
         <AlertTitle>Sign in required</AlertTitle>
         <AlertDescription>You must be signed in to log a found item.</AlertDescription>
-      </Alert>
-    {:else if !isLibrarian}
-      <Alert variant="destructive" class="text-sm">
-        <AlertTitle>Librarians only</AlertTitle>
-        <AlertDescription>You need librarian access to log found items.</AlertDescription>
       </Alert>
     {:else}
       <Card class="border-border/80 bg-card text-sm shadow-none">
@@ -284,6 +263,17 @@
                 placeholder="e.g. Library front desk"
                 bind:value={locationFound}
               />
+            </div>
+
+            <div class="space-y-2">
+              <Label class="text-sm" for="manual-due-date-input">Pickup deadline override</Label>
+              <Input
+                id="manual-due-date-input"
+                type="date"
+                class="text-sm"
+                bind:value={manualDueDate}
+              />
+              <p class="text-xs text-muted-foreground">Leave blank to use the automatic month-end deadline.</p>
             </div>
 
             <div class="space-y-2 md:col-span-2">
