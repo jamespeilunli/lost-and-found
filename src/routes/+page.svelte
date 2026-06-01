@@ -79,7 +79,6 @@
   let expandedTableDescriptions: Record<string, boolean> = {};
   let expandedCardDescriptions: Record<string, boolean> = {};
   let pendingItemId: string | null = null;
-  let dueDateDrafts: Record<string, string> = {};
   let loadItemsRequestId = 0;
   $: isLibrarian = Boolean(session);
 
@@ -391,10 +390,6 @@
     return data.session;
   }
 
-  function syncDueDateDrafts(list: ItemRow[]) {
-    dueDateDrafts = Object.fromEntries(list.map((item) => [item.id, item.manual_due_date ?? ""]));
-  }
-
   function isAuthorizationError(message: string) {
     const normalized = message.toLowerCase();
     return normalized.includes("row-level security") || normalized.includes("permission denied") || normalized.includes("librarian access");
@@ -450,7 +445,6 @@
       } else {
         items = fetchedItems;
       }
-      syncDueDateDrafts(fetchedItems);
     }
 
     itemsLoading = false;
@@ -492,32 +486,7 @@
     }
 
     items = items.map((item) => (item.id === itemId ? (data as ItemRow) : item));
-    syncDueDateDrafts(items);
     toast.success(`Item marked as ${formatStatusLabel(nextStatus).toLowerCase()}.`);
-  }
-
-  async function updateItemDueDate(itemId: string) {
-    if (!isLibrarian) return;
-
-    const nextDueDate = dueDateDrafts[itemId]?.trim() || null;
-    pendingItemId = itemId;
-    const { data, error } = await supabase
-      .from("items")
-      .update({ manual_due_date: nextDueDate })
-      .eq("id", itemId)
-      .select(itemSelectColumns)
-      .single();
-    pendingItemId = null;
-
-    if (error) {
-      itemsError = error.message;
-      toast.error("Could not update pickup deadline: " + error.message);
-      return;
-    }
-
-    items = items.map((item) => (item.id === itemId ? (data as ItemRow) : item));
-    syncDueDateDrafts(items);
-    toast.success(nextDueDate ? "Pickup deadline updated." : "Pickup deadline returned to automatic.");
   }
 
   async function deleteItem(itemId: string) {
@@ -560,7 +529,6 @@
       }
 
       items = items.filter((item) => item.id !== itemId);
-      syncDueDateDrafts(items);
 
       toast.success("Item deleted and archived successfully.");
     } catch (err) {
@@ -1015,23 +983,6 @@
                         <span>{formatItemDate(item.created_at)}</span>
                       </div>
                     </div>
-                    {#if isLibrarian && !viewingDeleted && item.status === "found"}
-                      <div class="flex flex-col gap-2 border-t border-border/80 pt-4 sm:flex-row sm:items-end">
-                        <div class="min-w-0 flex-1 space-y-1">
-                          <p class="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Pickup deadline override</p>
-                          <Input type="date" class="h-9 bg-background text-sm" bind:value={dueDateDrafts[item.id]} />
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          class="text-sm"
-                          onclick={() => updateItemDueDate(item.id)}
-                          disabled={pendingItemId === item.id}
-                        >
-                          Save date
-                        </Button>
-                      </div>
-                    {/if}
                   </CardContent>
 
                   {#if showItemActions}
@@ -1095,9 +1046,6 @@
                     <th class="px-4 py-3 font-medium">Location</th>
                     <th class="px-4 py-3 font-medium">Reported</th>
                     <th class="px-4 py-3 font-medium">Until donation</th>
-                    {#if isLibrarian}
-                      <th class="px-4 py-3 font-medium">Pickup deadline</th>
-                    {/if}
                     <th class="px-4 py-3 font-medium">Actions</th>
                   </tr>
                 </thead>
@@ -1170,26 +1118,6 @@
                           <span class="text-muted-foreground">—</span>
                         {/if}
                       </td>
-                      {#if isLibrarian}
-                        <td class="px-4 py-4">
-                          {#if !viewingDeleted && item.status === "found"}
-                            <div class="flex min-w-[220px] items-center gap-2">
-                              <Input type="date" class="h-8 bg-background text-xs" bind:value={dueDateDrafts[item.id]} />
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                class="text-xs"
-                                onclick={() => updateItemDueDate(item.id)}
-                                disabled={pendingItemId === item.id}
-                              >
-                                Save
-                              </Button>
-                            </div>
-                          {:else}
-                            <span class="text-muted-foreground">Automatic</span>
-                          {/if}
-                        </td>
-                      {/if}
                       <td class="px-4 py-4">
                         {#if showItemActions}
                           <details class="relative">
