@@ -95,7 +95,6 @@
           <KeyRound size={20} />
           Password
         </CardTitle>
-        <CardDescription>Invite and reset links both use this page.</CardDescription>
       </CardHeader>
       <CardContent class="space-y-4">
         {#if !checkedSession}

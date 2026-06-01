@@ -95,7 +95,7 @@
               : "We will email a secure password reset link."}
           </CardDescription>
         </CardHeader>
-        <CardContent class="space-y-4">
+        <CardContent class="space-y-4 mt-4">
           {#if errorMessage}
             <Alert variant="destructive" class="text-sm">
               <AlertTitle>Authentication issue</AlertTitle>
@@ -122,7 +122,7 @@
             </div>
           {/if}
         </CardContent>
-        <CardFooter class="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <CardFooter class="flex flex-col items-stretch gap-3 border-t-0 sm:flex-row sm:items-center sm:justify-between">
           <button
             type="button"
             class="text-left text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
