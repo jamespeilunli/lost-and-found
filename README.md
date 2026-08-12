@@ -11,6 +11,7 @@ Production: https://mvhs-lost-and-found.vercel.app
 - Librarian password setup and reset
 - Librarian-only found item logging
 - Item statuses: `found`, `claimed`
+- Librarian-only claimant email tracking
 - Automatic pickup deadlines with optional manual overrides
 - Optional image upload for items
 - Archived item view for librarians

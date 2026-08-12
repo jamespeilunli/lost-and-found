@@ -19,6 +19,7 @@
     ChevronDown,
     AlarmClock,
     Hourglass,
+    Mail,
   } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { publicSupabase, supabase } from "$lib/supabaseClient";
@@ -37,8 +38,8 @@
     DropdownMenuTrigger,
   } from "$lib/components/ui/dropdown-menu";
   import { Input } from "$lib/components/ui/input";
-  import { Select, SelectContent, SelectItem, SelectTrigger } from "$lib/components/ui/select";
   import { Separator } from "$lib/components/ui/separator";
+  import ClaimantEmailDialog from "$lib/components/ClaimantEmailDialog.svelte";
 
   type ItemStatus = "found" | "claimed";
   type ViewMode = "cards" | "table";
@@ -53,6 +54,7 @@
     location_found: string | null;
     created_at: string;
     manual_due_date: string | null;
+    claimed_by_email: string | null;
   };
 
   const statusOptions: ItemStatus[] = ["found", "claimed"];
@@ -62,7 +64,8 @@
   };
   const toolbarDropdownTriggerClass =
     "flex h-8 w-[176px] items-center justify-between gap-1.5 rounded-none border border-input bg-transparent py-2 pr-2 pl-2.5 text-xs whitespace-nowrap transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 aria-expanded:bg-muted [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0";
-  const itemSelectColumns = "id,title,description,category,status,image_url,location_found,created_at,manual_due_date";
+  const publicItemSelectColumns = "id,title,description,category,status,image_url,location_found,created_at,manual_due_date";
+  const librarianItemSelectColumns = `${publicItemSelectColumns},claimed_by_email`;
 
   let session: Session | null = null;
   let authLoading = false;
@@ -79,8 +82,14 @@
   let expandedTableDescriptions: Record<string, boolean> = {};
   let expandedCardDescriptions: Record<string, boolean> = {};
   let pendingItemId: string | null = null;
+  let statusUpdatingItemId: string | null = null;
   let loadItemsRequestId = 0;
+  let claimantDialogOpen = false;
+  let claimantDialogItemId: string | null = null;
+  let claimantDialogSaving = false;
+  let claimantDialogError = "";
   $: isLibrarian = Boolean(session);
+  $: claimantDialogItem = items.find((item) => item.id === claimantDialogItemId) ?? null;
 
   // computed list to render (either normal items or deleted items)
   $: displayedItems = viewingDeleted ? deletedItems : items;
@@ -412,12 +421,12 @@
     const query = signedIn
       ? supabase
           .from(showDeleted ? "deleted_items" : "items")
-          .select(itemSelectColumns)
+          .select(librarianItemSelectColumns)
           .in("status", statusOptions)
           .order("created_at", { ascending: false })
       : publicSupabase
           .from("items")
-          .select(itemSelectColumns)
+          .select(publicItemSelectColumns)
           .eq("status", "found")
           .order("created_at", { ascending: false });
 
@@ -454,6 +463,8 @@
     authLoading = true;
     authError = "";
     session = null;
+    claimantDialogOpen = false;
+    claimantDialogItemId = null;
     viewingDeleted = false;
     deletedItems = [];
     selectedStatusFilters = ["found"];
@@ -467,17 +478,54 @@
     authLoading = false;
   }
 
-  async function updateItemStatus(itemId: string, nextStatus: ItemStatus) {
-    if (!isLibrarian) {
-      return;
-    }
+  function openClaimantDialog(item: ItemRow) {
+    if (!isLibrarian || viewingDeleted) return;
+
+    claimantDialogItemId = item.id;
+    claimantDialogError = "";
+    claimantDialogOpen = true;
+  }
+
+  async function submitClaimantEmail(email: string) {
+    if (!isLibrarian || !claimantDialogItemId || claimantDialogSaving) return;
+
+    const itemId = claimantDialogItemId;
+    claimantDialogSaving = true;
+    claimantDialogError = "";
 
     const { data, error } = await supabase
       .from("items")
-      .update({ status: nextStatus })
+      .update({ status: "claimed", claimed_by_email: email })
       .eq("id", itemId)
-      .select(itemSelectColumns)
+      .select(librarianItemSelectColumns)
       .single();
+
+    claimantDialogSaving = false;
+
+    if (error) {
+      claimantDialogError = error.message;
+      toast.error("Could not save claimant email: " + error.message);
+      return;
+    }
+
+    items = items.map((item) => (item.id === itemId ? (data as ItemRow) : item));
+    claimantDialogOpen = false;
+    toast.success("Item marked as claimed.");
+  }
+
+  async function markItemAtLibrary(itemId: string) {
+    if (!isLibrarian || statusUpdatingItemId) return;
+
+    statusUpdatingItemId = itemId;
+
+    const { data, error } = await supabase
+      .from("items")
+      .update({ status: "found" })
+      .eq("id", itemId)
+      .select(librarianItemSelectColumns)
+      .single();
+
+    statusUpdatingItemId = null;
 
     if (error) {
       itemsError = error.message;
@@ -486,7 +534,7 @@
     }
 
     items = items.map((item) => (item.id === itemId ? (data as ItemRow) : item));
-    toast.success(`Item marked as ${formatStatusLabel(nextStatus).toLowerCase()}.`);
+    toast.success("Item marked as at library.");
   }
 
   async function deleteItem(itemId: string) {
@@ -508,6 +556,7 @@
         created_at: item.created_at,
         created_by: session?.user.id ?? null,
         manual_due_date: item.manual_due_date,
+        claimed_by_email: item.claimed_by_email,
       };
 
       const { error: insertError } = await supabase.from("deleted_items").insert([toInsert]);
@@ -551,6 +600,10 @@
 
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       session = nextSession;
+      if (!nextSession) {
+        claimantDialogOpen = false;
+        claimantDialogItemId = null;
+      }
       viewingDeleted = false;
       selectedStatusFilters = nextSession ? [...statusOptions] : ["found"];
       void loadItems({ signedIn: Boolean(nextSession), showDeleted: false });
@@ -982,28 +1035,36 @@
                         <CalendarDays size={15} class="shrink-0 text-primary" />
                         <span>{formatItemDate(item.created_at)}</span>
                       </div>
+                      {#if isLibrarian && (item.claimed_by_email || item.status === "claimed")}
+                        <div
+                          class="inline-flex max-w-full items-center gap-2 rounded-full bg-muted/55 px-2.5 py-1.5"
+                          title={`${item.status === "claimed" ? "Claimed by" : "Last claimant"}: ${item.claimed_by_email ?? "Not recorded"}`}
+                        >
+                          <Mail size={15} class="shrink-0 text-primary" />
+                          <span class="truncate">
+                            {item.status === "claimed" ? "Claimed by" : "Last claimant"}: {item.claimed_by_email ?? "Not recorded"}
+                          </span>
+                        </div>
+                      {/if}
                     </div>
                   </CardContent>
 
                   {#if showItemActions}
                     <CardFooter class="border-border/80 flex items-center justify-between gap-2 bg-card px-4 py-4">
                       <div class="flex flex-wrap items-center gap-2">
-                        {#if isLibrarian}
-                          <Select
-                            type="single"
-                            value={item.status}
-                            onValueChange={(value: string) => updateItemStatus(item.id, value as ItemStatus)}
-                          >
-                            <SelectTrigger class="w-[140px] bg-background text-sm">
-                              {formatStatusLabel(item.status)}
-                            </SelectTrigger>
-                            <SelectContent>
-                              {#each statusOptions as option}
-                                <SelectItem value={option} label={formatStatusLabel(option)} />
-                              {/each}
-                            </SelectContent>
-                          </Select>
-                        {/if}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          class="text-sm"
+                          onclick={() => item.status === "found" ? openClaimantDialog(item) : markItemAtLibrary(item.id)}
+                          disabled={statusUpdatingItemId === item.id || claimantDialogSaving}
+                        >
+                          {statusUpdatingItemId === item.id
+                            ? "Updating..."
+                            : item.status === "found"
+                              ? "Mark as claimed"
+                              : "Mark as at library"}
+                        </Button>
                         <Button href={`/edit/${item.id}`} variant="outline" size="sm" class="text-sm">Edit</Button>
                       </div>
                       <Button
@@ -1025,18 +1086,18 @@
             </div>
           {:else}
             <div class="overflow-x-auto rounded-md border border-border/80">
-              <table class="w-full min-w-[820px] border-collapse text-left text-sm table-fixed">
+              <table class="w-full min-w-[980px] border-collapse text-left text-sm table-fixed">
                 <colgroup>
-                  <col class="w-[34%]" />
+                  <col class="w-[26%]" />
                   <col class="w-[10%]" />
                   <col class="w-[10%]" />
+                  <col class="w-[11%]" />
+                  <col class="w-[11%]" />
                   <col class="w-[12%]" />
-                  <col class="w-[12%]" />
-                  <col class="w-[13%]" />
                   {#if isLibrarian}
-                    <col class="w-[13%]" />
+                    <col class="w-[15%]" />
                   {/if}
-                  <col class="w-[8%]" />
+                  <col class="w-[10%]" />
                 </colgroup>
                 <thead class="bg-muted/40 text-muted-foreground">
                   <tr>
@@ -1046,6 +1107,9 @@
                     <th class="px-4 py-3 font-medium">Location</th>
                     <th class="px-4 py-3 font-medium">Reported</th>
                     <th class="px-4 py-3 font-medium">Until donation</th>
+                    {#if isLibrarian}
+                      <th class="px-4 py-3 font-medium">Claimant email</th>
+                    {/if}
                     <th class="px-4 py-3 font-medium">Actions</th>
                   </tr>
                 </thead>
@@ -1118,6 +1182,15 @@
                           <span class="text-muted-foreground">—</span>
                         {/if}
                       </td>
+                      {#if isLibrarian}
+                        <td class="px-4 py-4">
+                          <div class="flex min-w-0 flex-col items-start gap-1">
+                            <span class="block max-w-full truncate" title={item.claimed_by_email ?? (item.status === "claimed" ? "Not recorded" : "No claimant email")}>
+                              {item.claimed_by_email ?? (item.status === "claimed" ? "Not recorded" : "—")}
+                            </span>
+                          </div>
+                        </td>
+                      {/if}
                       <td class="px-4 py-4">
                         {#if showItemActions}
                           <details class="relative">
@@ -1128,28 +1201,20 @@
                               <EllipsisVertical size={16} />
                             </summary>
                             <div class="absolute right-0 top-10 z-20 w-56 rounded-md border border-border/80 bg-popover p-2 shadow-md">
-                              {#if isLibrarian}
-                                <div class="space-y-1">
-                                  <p class="px-2 pt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                                    Status
-                                  </p>
-                                  <Select
-                                    type="single"
-                                    value={item.status}
-                                    onValueChange={(value: string) => updateItemStatus(item.id, value as ItemStatus)}
-                                  >
-                                    <SelectTrigger class="w-full bg-background text-sm">
-                                      {formatStatusLabel(item.status)}
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {#each statusOptions as option}
-                                        <SelectItem value={option} label={formatStatusLabel(option)} />
-                                      {/each}
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                              {/if}
-                              <div class="mt-2 flex flex-col gap-1">
+                              <div class="flex flex-col gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  class="justify-start text-sm"
+                                  onclick={() => item.status === "found" ? openClaimantDialog(item) : markItemAtLibrary(item.id)}
+                                  disabled={statusUpdatingItemId === item.id || claimantDialogSaving}
+                                >
+                                  {statusUpdatingItemId === item.id
+                                    ? "Updating..."
+                                    : item.status === "found"
+                                      ? "Mark as claimed"
+                                      : "Mark as at library"}
+                                </Button>
                                 <Button href={`/edit/${item.id}`} variant="outline" size="sm" class="justify-start text-sm">Edit item</Button>
                                 <Button
                                   variant="destructive"
@@ -1182,3 +1247,11 @@
     </Card>
   </main>
 </div>
+
+<ClaimantEmailDialog
+  bind:open={claimantDialogOpen}
+  itemTitle={claimantDialogItem?.title ?? "item"}
+  saving={claimantDialogSaving}
+  error={claimantDialogError}
+  onSubmit={submitClaimantEmail}
+/>
