@@ -7,8 +7,6 @@
 
   export let open = false;
   export let itemTitle = "";
-  export let initialEmail = "";
-  export let mode: "claim" | "edit" = "claim";
   export let saving = false;
   export let error = "";
   export let onSubmit: (email: string) => void | Promise<void>;
@@ -18,7 +16,7 @@
   let wasOpen = false;
 
   $: if (open && !wasOpen) {
-    email = initialEmail;
+    email = "";
     validationError = "";
   }
   $: wasOpen = open;
@@ -46,11 +44,9 @@
   >
     <form class="flex flex-col gap-5" onsubmit={handleSubmit}>
       <Dialog.Header>
-        <Dialog.Title>{mode === "claim" ? "Mark item as claimed" : "Edit claimant email"}</Dialog.Title>
+        <Dialog.Title>Mark item as claimed</Dialog.Title>
         <Dialog.Description>
-          {mode === "claim"
-            ? `Enter the email of the person claiming “${itemTitle}”. The item will not be updated until you submit.`
-            : `Update the latest claimant email recorded for “${itemTitle}”.`}
+          Enter the email of the person claiming “{itemTitle}”. The item will not be updated until you submit.
         </Dialog.Description>
       </Dialog.Header>
 
@@ -85,7 +81,7 @@
           Cancel
         </Button>
         <Button type="submit" disabled={saving}>
-          {saving ? "Saving..." : mode === "claim" ? "Mark as claimed" : "Save email"}
+          {saving ? "Saving..." : "Mark as claimed"}
         </Button>
       </Dialog.Footer>
     </form>

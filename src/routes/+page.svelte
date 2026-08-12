@@ -86,7 +86,6 @@
   let loadItemsRequestId = 0;
   let claimantDialogOpen = false;
   let claimantDialogItemId: string | null = null;
-  let claimantDialogMode: "claim" | "edit" = "claim";
   let claimantDialogSaving = false;
   let claimantDialogError = "";
   $: isLibrarian = Boolean(session);
@@ -479,11 +478,10 @@
     authLoading = false;
   }
 
-  function openClaimantDialog(item: ItemRow, mode: "claim" | "edit") {
+  function openClaimantDialog(item: ItemRow) {
     if (!isLibrarian || viewingDeleted) return;
 
     claimantDialogItemId = item.id;
-    claimantDialogMode = mode;
     claimantDialogError = "";
     claimantDialogOpen = true;
   }
@@ -492,17 +490,12 @@
     if (!isLibrarian || !claimantDialogItemId || claimantDialogSaving) return;
 
     const itemId = claimantDialogItemId;
-    const isClaiming = claimantDialogMode === "claim";
     claimantDialogSaving = true;
     claimantDialogError = "";
 
-    const payload = isClaiming
-      ? { status: "claimed" as const, claimed_by_email: email }
-      : { claimed_by_email: email };
-
     const { data, error } = await supabase
       .from("items")
-      .update(payload)
+      .update({ status: "claimed", claimed_by_email: email })
       .eq("id", itemId)
       .select(librarianItemSelectColumns)
       .single();
@@ -517,7 +510,7 @@
 
     items = items.map((item) => (item.id === itemId ? (data as ItemRow) : item));
     claimantDialogOpen = false;
-    toast.success(isClaiming ? "Item marked as claimed." : "Claimant email updated.");
+    toast.success("Item marked as claimed.");
   }
 
   async function markItemAtLibrary(itemId: string) {
@@ -1042,7 +1035,7 @@
                         <CalendarDays size={15} class="shrink-0 text-primary" />
                         <span>{formatItemDate(item.created_at)}</span>
                       </div>
-                      {#if isLibrarian}
+                      {#if isLibrarian && (item.claimed_by_email || item.status === "claimed")}
                         <div
                           class="inline-flex max-w-full items-center gap-2 rounded-full bg-muted/55 px-2.5 py-1.5"
                           title={`${item.status === "claimed" ? "Claimed by" : "Last claimant"}: ${item.claimed_by_email ?? "Not recorded"}`}
@@ -1052,11 +1045,6 @@
                             {item.status === "claimed" ? "Claimed by" : "Last claimant"}: {item.claimed_by_email ?? "Not recorded"}
                           </span>
                         </div>
-                        {#if !viewingDeleted && (item.claimed_by_email || item.status === "claimed")}
-                          <Button variant="ghost" size="xs" onclick={() => openClaimantDialog(item, "edit")}>
-                            {item.claimed_by_email ? "Edit email" : "Add email"}
-                          </Button>
-                        {/if}
                       {/if}
                     </div>
                   </CardContent>
@@ -1065,9 +1053,10 @@
                     <CardFooter class="border-border/80 flex items-center justify-between gap-2 bg-card px-4 py-4">
                       <div class="flex flex-wrap items-center gap-2">
                         <Button
-                          variant="secondary"
+                          variant="outline"
                           size="sm"
-                          onclick={() => item.status === "found" ? openClaimantDialog(item, "claim") : markItemAtLibrary(item.id)}
+                          class="text-sm"
+                          onclick={() => item.status === "found" ? openClaimantDialog(item) : markItemAtLibrary(item.id)}
                           disabled={statusUpdatingItemId === item.id || claimantDialogSaving}
                         >
                           {statusUpdatingItemId === item.id
@@ -1196,14 +1185,9 @@
                       {#if isLibrarian}
                         <td class="px-4 py-4">
                           <div class="flex min-w-0 flex-col items-start gap-1">
-                            <span class="block max-w-full truncate" title={item.claimed_by_email ?? "Not recorded"}>
-                              {item.claimed_by_email ?? "Not recorded"}
+                            <span class="block max-w-full truncate" title={item.claimed_by_email ?? (item.status === "claimed" ? "Not recorded" : "No claimant email")}>
+                              {item.claimed_by_email ?? (item.status === "claimed" ? "Not recorded" : "—")}
                             </span>
-                            {#if !viewingDeleted && (item.claimed_by_email || item.status === "claimed")}
-                              <Button variant="ghost" size="xs" onclick={() => openClaimantDialog(item, "edit")}>
-                                {item.claimed_by_email ? "Edit" : "Add email"}
-                              </Button>
-                            {/if}
                           </div>
                         </td>
                       {/if}
@@ -1219,10 +1203,10 @@
                             <div class="absolute right-0 top-10 z-20 w-56 rounded-md border border-border/80 bg-popover p-2 shadow-md">
                               <div class="flex flex-col gap-1">
                                 <Button
-                                  variant="secondary"
+                                  variant="outline"
                                   size="sm"
                                   class="justify-start text-sm"
-                                  onclick={() => item.status === "found" ? openClaimantDialog(item, "claim") : markItemAtLibrary(item.id)}
+                                  onclick={() => item.status === "found" ? openClaimantDialog(item) : markItemAtLibrary(item.id)}
                                   disabled={statusUpdatingItemId === item.id || claimantDialogSaving}
                                 >
                                   {statusUpdatingItemId === item.id
@@ -1267,8 +1251,6 @@
 <ClaimantEmailDialog
   bind:open={claimantDialogOpen}
   itemTitle={claimantDialogItem?.title ?? "item"}
-  initialEmail={claimantDialogMode === "edit" ? claimantDialogItem?.claimed_by_email ?? "" : ""}
-  mode={claimantDialogMode}
   saving={claimantDialogSaving}
   error={claimantDialogError}
   onSubmit={submitClaimantEmail}
