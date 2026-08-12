@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
-  import { ArrowLeft } from "lucide-svelte";
+  import { ArrowLeft, Mail } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
   import { toast } from "svelte-sonner";
@@ -25,6 +25,7 @@
     SelectTrigger,
   } from "$lib/components/ui/select";
   import { Textarea } from "$lib/components/ui/textarea";
+  import ClaimantEmailDialog from "$lib/components/ClaimantEmailDialog.svelte";
 
   let session: Session | null = null;
   const itemId = $page.params.id;
@@ -45,6 +46,7 @@
   let customCategory = "";
   let locationFound = "";
   let status = "found";
+  let claimedByEmail: string | null = null;
   let manualDueDate = "";
   let imageUrl: string | null = null;
 
@@ -57,10 +59,15 @@
   let formError = "";
   let formLoading = false;
   let pageLoading = true;
+  let claimantDialogOpen = false;
+  let claimantDialogMode: "claim" | "edit" = "claim";
+  let claimantDialogSaving = false;
+  let claimantDialogError = "";
+  let statusLoading = false;
 
   const imageBucket = "item-images";
   const itemSelectColumns =
-    "id,title,description,category,status,image_url,location_found,created_at,manual_due_date";
+    "id,title,description,category,status,image_url,location_found,created_at,manual_due_date,claimed_by_email";
 
   async function loadSessionAndItem() {
     const { data: authData } = await supabase.auth.getSession();
@@ -99,6 +106,7 @@
     }
     locationFound = itemData.location_found || "";
     status = itemData.status || "found";
+    claimedByEmail = itemData.claimed_by_email;
     manualDueDate = itemData.manual_due_date || "";
     imageUrl = itemData.image_url;
 
@@ -153,7 +161,6 @@
       category: finalCategory,
       location_found: locationFound.trim() ? locationFound.trim() : null,
       image_url: newImageUrl,
-      status,
       manual_due_date: manualDueDate || null,
     };
 
@@ -174,6 +181,66 @@
     }
 
     formLoading = false;
+  }
+
+  function openClaimantDialog(mode: "claim" | "edit") {
+    claimantDialogMode = mode;
+    claimantDialogError = "";
+    claimantDialogOpen = true;
+  }
+
+  async function submitClaimantEmail(email: string) {
+    if (!session?.user || claimantDialogSaving) return;
+
+    const isClaiming = claimantDialogMode === "claim";
+    claimantDialogSaving = true;
+    claimantDialogError = "";
+
+    const payload = isClaiming
+      ? { status: "claimed", claimed_by_email: email }
+      : { claimed_by_email: email };
+
+    const { data, error } = await supabase
+      .from("items")
+      .update(payload)
+      .eq("id", itemId)
+      .select(itemSelectColumns)
+      .single();
+
+    claimantDialogSaving = false;
+
+    if (error) {
+      claimantDialogError = error.message;
+      toast.error("Could not save claimant email: " + error.message);
+      return;
+    }
+
+    status = data.status;
+    claimedByEmail = data.claimed_by_email;
+    claimantDialogOpen = false;
+    toast.success(isClaiming ? "Item marked as claimed." : "Claimant email updated.");
+  }
+
+  async function markItemAtLibrary() {
+    if (!session?.user || statusLoading) return;
+
+    statusLoading = true;
+    const { data, error } = await supabase
+      .from("items")
+      .update({ status: "found" })
+      .eq("id", itemId)
+      .select(itemSelectColumns)
+      .single();
+    statusLoading = false;
+
+    if (error) {
+      toast.error("Could not update item status: " + error.message);
+      return;
+    }
+
+    status = data.status;
+    claimedByEmail = data.claimed_by_email;
+    toast.success("Item marked as at library.");
   }
 
   onMount(() => {
@@ -272,20 +339,39 @@
               <Input class="text-sm" id="location-input" type="text" bind:value={locationFound} />
             </div>
 
-            <div class="space-y-2">
-              <Label class="text-sm" for="status-select-trigger">Status</Label>
-              <Select type="single" bind:value={status}>
-                <SelectTrigger
-                  id="status-select-trigger"
-                  class="w-full justify-between bg-background text-sm"
+            <div class="flex flex-col gap-2">
+              <Label class="text-sm">Status</Label>
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-sm font-medium">{status === "claimed" ? "Claimed" : "At library"}</span>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onclick={() => status === "claimed" ? markItemAtLibrary() : openClaimantDialog("claim")}
+                  disabled={statusLoading || claimantDialogSaving}
                 >
-                  {status === "claimed" ? "Claimed" : "At library"}
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="found" label="At library" />
-                  <SelectItem value="claimed" label="Claimed" />
-                </SelectContent>
-              </Select>
+                  {statusLoading
+                    ? "Updating..."
+                    : status === "claimed"
+                      ? "Mark as at library"
+                      : "Mark as claimed"}
+                </Button>
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-2">
+              <Label class="text-sm">Claimant email</Label>
+              <div class="flex min-w-0 flex-wrap items-center gap-2">
+                <Mail size={16} class="shrink-0 text-primary" />
+                <span class="min-w-0 truncate text-sm" title={claimedByEmail ?? "Not recorded"}>
+                  {claimedByEmail ?? "Not recorded"}
+                </span>
+                {#if claimedByEmail || status === "claimed"}
+                  <Button type="button" variant="outline" size="sm" onclick={() => openClaimantDialog("edit")}>
+                    {claimedByEmail ? "Edit email" : "Add email"}
+                  </Button>
+                {/if}
+              </div>
             </div>
 
             <div class="space-y-2">
@@ -339,3 +425,13 @@
     {/if}
   </main>
 </div>
+
+<ClaimantEmailDialog
+  bind:open={claimantDialogOpen}
+  itemTitle={title || "item"}
+  initialEmail={claimantDialogMode === "edit" ? claimedByEmail ?? "" : ""}
+  mode={claimantDialogMode}
+  saving={claimantDialogSaving}
+  error={claimantDialogError}
+  onSubmit={submitClaimantEmail}
+/>
