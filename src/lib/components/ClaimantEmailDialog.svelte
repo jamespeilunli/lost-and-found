@@ -51,9 +51,9 @@
       </Dialog.Header>
 
       <div class="flex flex-col gap-2">
-        <Label for="claimant-email-input">Claimant email *</Label>
+        <Label for="claimant-email-dialog-input">Claimant email *</Label>
         <Input
-          id="claimant-email-input"
+          id="claimant-email-dialog-input"
           name="claimantEmail"
           type="email"
           autocomplete="email"
