@@ -5,6 +5,7 @@
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
   import { compressImage, extensionForType } from "$lib/imageCompression";
+  import { invalidateItemsCache } from "$lib/itemsCache";
   import { toast } from "svelte-sonner";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
   import { Button } from "$lib/components/ui/button";
@@ -128,6 +129,7 @@
         ? "This signed-in account is not approved to log inventory."
         : "Failed to log item: " + error.message;
     } else {
+      invalidateItemsCache();
       toast.success("Found item logged.");
       await goto("/");
     }

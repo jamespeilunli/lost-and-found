@@ -6,6 +6,7 @@
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
   import { compressImage, extensionForType } from "$lib/imageCompression";
+  import { invalidateItemsCache } from "$lib/itemsCache";
   import { toast } from "svelte-sonner";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
   import { Button } from "$lib/components/ui/button";
@@ -189,6 +190,7 @@
         ? "This signed-in account is not approved to update inventory."
         : "Failed to update item: " + error.message;
     } else {
+      invalidateItemsCache();
       toast.success("Item updated successfully.");
       await goto("/");
     }
@@ -224,6 +226,7 @@
 
     status = data.status;
     claimedByEmail = data.claimed_by_email ?? "";
+    invalidateItemsCache();
     claimantDialogOpen = false;
     toast.success("Item marked as claimed.");
   }
@@ -247,6 +250,7 @@
 
     status = data.status;
     claimedByEmail = data.claimed_by_email ?? "";
+    invalidateItemsCache();
     toast.success("Item marked as at library.");
   }
 

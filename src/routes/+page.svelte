@@ -23,6 +23,14 @@
   } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { publicSupabase, supabase } from "$lib/supabaseClient";
+  import {
+    getCachedItems,
+    setCachedItems,
+    invalidateItemsCache,
+    type ItemRow,
+    type ItemStatus,
+    type ItemsScope,
+  } from "$lib/itemsCache";
   import { toast } from "svelte-sonner";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
   import { Badge } from "$lib/components/ui/badge";
@@ -41,21 +49,7 @@
   import { Separator } from "$lib/components/ui/separator";
   import ClaimantEmailDialog from "$lib/components/ClaimantEmailDialog.svelte";
 
-  type ItemStatus = "found" | "claimed";
   type ViewMode = "cards" | "table";
-
-  type ItemRow = {
-    id: string;
-    title: string;
-    description: string | null;
-    category: string | null;
-    status: ItemStatus;
-    image_url: string | null;
-    location_found: string | null;
-    created_at: string;
-    manual_due_date: string | null;
-    claimed_by_email: string | null;
-  };
 
   const statusOptions: ItemStatus[] = ["found", "claimed"];
   const statusLabels: Record<ItemStatus, string> = {
@@ -404,11 +398,11 @@
     return normalized.includes("row-level security") || normalized.includes("permission denied") || normalized.includes("librarian access");
   }
 
-  async function loadItems(options: { signedIn?: boolean; showDeleted?: boolean } = {}) {
+  async function loadItems(options: { signedIn?: boolean; showDeleted?: boolean; force?: boolean } = {}) {
     const requestId = ++loadItemsRequestId;
     const signedIn = options.signedIn ?? isLibrarian;
     const showDeleted = signedIn && (options.showDeleted ?? viewingDeleted);
-    itemsLoading = true;
+    const scope: ItemsScope = signedIn ? "librarian" : "public";
     itemsError = "";
     authError = "";
 
@@ -418,17 +412,36 @@
       selectedStatusFilters = ["found"];
     }
 
+    // Serve the last fetch for this scope if it's still within the cache TTL,
+    // unless the caller forced a refresh (the Refresh button).
+    if (!options.force) {
+      const cachedRows = getCachedItems(scope, showDeleted);
+      if (cachedRows) {
+        if (showDeleted) {
+          deletedItems = cachedRows;
+        } else {
+          items = cachedRows;
+        }
+        itemsLoading = false;
+        return;
+      }
+    }
+
+    itemsLoading = true;
+
     const query = signedIn
       ? supabase
           .from(showDeleted ? "deleted_items" : "items")
           .select(librarianItemSelectColumns)
           .in("status", statusOptions)
           .order("created_at", { ascending: false })
+          .limit(200)
       : publicSupabase
           .from("items")
           .select(publicItemSelectColumns)
           .eq("status", "found")
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: false })
+          .limit(200);
 
     const { data, error } = await query;
 
@@ -448,6 +461,8 @@
       const fetchedItems = ((data ?? []) as ItemRow[]).sort(
         (a, b) => getItemDonationDate(a).getTime() - getItemDonationDate(b).getTime(),
       );
+
+      setCachedItems(scope, showDeleted, fetchedItems);
 
       if (showDeleted) {
         deletedItems = fetchedItems;
@@ -474,6 +489,7 @@
       authError = error.message;
     }
 
+    invalidateItemsCache();
     await loadItems({ signedIn: false, showDeleted: false });
     authLoading = false;
   }
@@ -509,6 +525,7 @@
     }
 
     items = items.map((item) => (item.id === itemId ? (data as ItemRow) : item));
+    invalidateItemsCache();
     claimantDialogOpen = false;
     toast.success("Item marked as claimed.");
   }
@@ -534,6 +551,7 @@
     }
 
     items = items.map((item) => (item.id === itemId ? (data as ItemRow) : item));
+    invalidateItemsCache();
     toast.success("Item marked as at library.");
   }
 
@@ -578,6 +596,7 @@
       }
 
       items = items.filter((item) => item.id !== itemId);
+      invalidateItemsCache();
 
       toast.success("Item deleted and archived successfully.");
     } catch (err) {
@@ -598,7 +617,7 @@
       }
     })();
 
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
       session = nextSession;
       if (!nextSession) {
         claimantDialogOpen = false;
@@ -606,6 +625,11 @@
       }
       viewingDeleted = false;
       selectedStatusFilters = nextSession ? [...statusOptions] : ["found"];
+
+      // onMount already loads the list for the restored session explicitly; the
+      // initial event just echoes that same session, so skip the extra fetch.
+      if (event === "INITIAL_SESSION") return;
+
       void loadItems({ signedIn: Boolean(nextSession), showDeleted: false });
     });
 
@@ -829,7 +853,7 @@
                     variant="ghost"
                     size="icon"
                     class="size-10 border border-border/70 bg-background text-muted-foreground hover:text-foreground"
-                    onclick={() => loadItems({ signedIn: isLibrarian, showDeleted: viewingDeleted })}
+                    onclick={() => loadItems({ signedIn: isLibrarian, showDeleted: viewingDeleted, force: true })}
                     disabled={itemsLoading}
                     aria-label="Refresh items"
                     title="Refresh"
