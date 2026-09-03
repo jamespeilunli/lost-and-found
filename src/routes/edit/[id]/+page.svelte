@@ -5,6 +5,7 @@
   import { ArrowLeft } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
+  import { compressImage, extensionForType } from "$lib/imageCompression";
   import { toast } from "svelte-sonner";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
   import { Button } from "$lib/components/ui/button";
@@ -144,12 +145,13 @@
     let newImageUrl: string | null = imageUrl;
 
     if (imageFile) {
-      const fileExt = imageFile.name.split(".").pop() || "jpg";
+      const uploadFile = await compressImage(imageFile);
+      const fileExt = extensionForType(uploadFile, imageFile.name);
       const filePath = `${session.user.id}/${crypto.randomUUID()}.${fileExt}`;
       const { error: uploadError } = await supabase.storage
         .from(imageBucket)
-        .upload(filePath, imageFile, {
-          contentType: imageFile.type,
+        .upload(filePath, uploadFile, {
+          contentType: uploadFile.type,
           upsert: false,
         });
 
