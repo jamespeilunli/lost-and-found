@@ -961,7 +961,15 @@
                 {@const showItemActions = !viewingDeleted && isLibrarian}
                 <Card class="border-border/80 bg-card py-0">
                   {#if item.image_url}
-                    <img src={item.image_url} alt={item.title} class="h-[clamp(16rem,28vw,20rem)] w-full object-cover" />
+                    <img
+                      src={item.image_url}
+                      alt={item.title}
+                      width={640}
+                      height={320}
+                      loading="lazy"
+                      decoding="async"
+                      class="h-[clamp(16rem,28vw,20rem)] w-full object-cover"
+                    />
                   {:else}
                     <div class="flex h-[clamp(16rem,28vw,20rem)] w-full items-center justify-center bg-muted text-sm text-muted-foreground">
                       No image
@@ -1121,7 +1129,15 @@
                       <td class="px-4 py-4">
                         <div class="flex items-start gap-3">
                           {#if item.image_url}
-                            <img src={item.image_url} alt={item.title} class="h-12 w-12 rounded-sm object-cover shrink-0" />
+                            <img
+                              src={item.image_url}
+                              alt={item.title}
+                              width={48}
+                              height={48}
+                              loading="lazy"
+                              decoding="async"
+                              class="h-12 w-12 rounded-sm object-cover shrink-0"
+                            />
                           {:else}
                             <div class="flex h-12 w-12 items-center justify-center rounded-sm bg-muted text-xs text-muted-foreground shrink-0">
                               None
