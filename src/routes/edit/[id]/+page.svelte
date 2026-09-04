@@ -5,7 +5,7 @@
   import { ArrowLeft } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
-  import { compressImage, extensionForType } from "$lib/imageCompression";
+  import { compressImage, extensionForType, getImageRejectionReason } from "$lib/imageCompression";
   import { invalidateItemsCache } from "$lib/itemsCache";
   import { toast } from "svelte-sonner";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
@@ -411,7 +411,18 @@
                 accept="image/*"
                 class="bg-background text-sm"
                 onchange={(event: Event) => {
-                  const file = (event.currentTarget as HTMLInputElement).files?.[0];
+                  const input = event.currentTarget as HTMLInputElement;
+                  const file = input.files?.[0];
+                  if (file) {
+                    const rejectionReason = getImageRejectionReason(file);
+                    if (rejectionReason) {
+                      formError = rejectionReason;
+                      input.value = "";
+                      imageFile = null;
+                      return;
+                    }
+                  }
+                  formError = "";
                   imageFile = file ?? null;
                 }}
               />
