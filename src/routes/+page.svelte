@@ -439,13 +439,11 @@
           .select(librarianItemSelectColumns)
           .in("status", statusOptions)
           .order("created_at", { ascending: false })
-          .limit(200)
       : publicSupabase
           .from("items")
           .select(publicItemSelectColumns)
           .eq("status", "found")
-          .order("created_at", { ascending: false })
-          .limit(200);
+          .order("created_at", { ascending: false });
 
     const { data, error } = await query;
 
