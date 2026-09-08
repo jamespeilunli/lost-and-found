@@ -25,13 +25,22 @@ type CacheEntry = { at: number; rows: ItemRow[] };
 
 const cache = new Map<string, CacheEntry>();
 
-function keyFor(scope: ItemsScope, showDeleted: boolean): string {
-	return `${scope}:${showDeleted}`;
+// `identity` is the signed-in user's id (or null for anonymous/public reads). It's
+// folded into the key so a cached entry can never be served to a different auth
+// identity than the one it was fetched for — e.g. if the active session in this tab
+// changes (sign-out/sign-in, expiry, cross-tab auth sync) without an explicit
+// invalidateItemsCache() call, the old entry simply won't match the new identity's key.
+function keyFor(scope: ItemsScope, showDeleted: boolean, identity: string | null): string {
+	return `${scope}:${showDeleted}:${identity ?? "anon"}`;
 }
 
-/** Cached rows for this scope, or null when there is no entry or it has expired. */
-export function getCachedItems(scope: ItemsScope, showDeleted: boolean): ItemRow[] | null {
-	const key = keyFor(scope, showDeleted);
+/** Cached rows for this scope+identity, or null when there is no entry or it has expired. */
+export function getCachedItems(
+	scope: ItemsScope,
+	showDeleted: boolean,
+	identity: string | null
+): ItemRow[] | null {
+	const key = keyFor(scope, showDeleted, identity);
 	const entry = cache.get(key);
 	if (!entry) return null;
 	if (Date.now() - entry.at >= TTL_MS) {
@@ -41,8 +50,13 @@ export function getCachedItems(scope: ItemsScope, showDeleted: boolean): ItemRow
 	return entry.rows;
 }
 
-export function setCachedItems(scope: ItemsScope, showDeleted: boolean, rows: ItemRow[]): void {
-	cache.set(keyFor(scope, showDeleted), { at: Date.now(), rows });
+export function setCachedItems(
+	scope: ItemsScope,
+	showDeleted: boolean,
+	identity: string | null,
+	rows: ItemRow[]
+): void {
+	cache.set(keyFor(scope, showDeleted, identity), { at: Date.now(), rows });
 }
 
 /**

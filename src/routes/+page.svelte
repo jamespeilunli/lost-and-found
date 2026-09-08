@@ -403,6 +403,10 @@
     const signedIn = options.signedIn ?? isLibrarian;
     const showDeleted = signedIn && (options.showDeleted ?? viewingDeleted);
     const scope: ItemsScope = signedIn ? "librarian" : "public";
+    // Scope the cache to the active identity so a cached entry from a previous
+    // session (e.g. before an auth change that didn't route through handleLogout)
+    // can never be served to a different signed-in user. See itemsCache.ts.
+    const identity = signedIn ? (session?.user.id ?? null) : null;
     itemsError = "";
     authError = "";
 
@@ -415,7 +419,7 @@
     // Serve the last fetch for this scope if it's still within the cache TTL,
     // unless the caller forced a refresh (the Refresh button).
     if (!options.force) {
-      const cachedRows = getCachedItems(scope, showDeleted);
+      const cachedRows = getCachedItems(scope, showDeleted, identity);
       if (cachedRows) {
         if (showDeleted) {
           deletedItems = cachedRows;
@@ -462,7 +466,7 @@
         (a, b) => getItemDonationDate(a).getTime() - getItemDonationDate(b).getTime(),
       );
 
-      setCachedItems(scope, showDeleted, fetchedItems);
+      setCachedItems(scope, showDeleted, identity, fetchedItems);
 
       if (showDeleted) {
         deletedItems = fetchedItems;
