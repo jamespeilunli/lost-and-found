@@ -4,6 +4,8 @@
   import { ArrowLeft } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
+  import { compressImage, extensionForType, getImageRejectionReason } from "$lib/imageCompression";
+  import { invalidateItemsCache } from "$lib/itemsCache";
   import { toast } from "svelte-sonner";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
   import { Button } from "$lib/components/ui/button";
@@ -87,12 +89,13 @@
     let imageUrl: string | null = null;
 
     if (imageFile) {
-      const fileExt = imageFile.name.split(".").pop() || "jpg";
+      const uploadFile = await compressImage(imageFile);
+      const fileExt = extensionForType(uploadFile, imageFile.name);
       const filePath = `${session.user.id}/${crypto.randomUUID()}.${fileExt}`;
       const { error: uploadError } = await supabase.storage
         .from(imageBucket)
-        .upload(filePath, imageFile, {
-          contentType: imageFile.type,
+        .upload(filePath, uploadFile, {
+          contentType: uploadFile.type,
           upsert: false,
         });
 
@@ -126,6 +129,7 @@
         ? "This signed-in account is not approved to log inventory."
         : "Failed to log item: " + error.message;
     } else {
+      invalidateItemsCache();
       toast.success("Found item logged.");
       await goto("/");
     }
@@ -285,7 +289,18 @@
                 accept="image/*"
                 class="bg-background text-sm"
                 onchange={(event: Event) => {
-                  const file = (event.currentTarget as HTMLInputElement).files?.[0];
+                  const input = event.currentTarget as HTMLInputElement;
+                  const file = input.files?.[0];
+                  if (file) {
+                    const rejectionReason = getImageRejectionReason(file);
+                    if (rejectionReason) {
+                      formError = rejectionReason;
+                      input.value = "";
+                      imageFile = null;
+                      return;
+                    }
+                  }
+                  formError = "";
                   imageFile = file ?? null;
                 }}
               />
