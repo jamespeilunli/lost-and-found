@@ -15,48 +15,57 @@ export type ItemRow = {
 
 export type ItemsScope = "public" | "librarian";
 
+// Identifies one fetched slice of the inventory. Everything that changes which
+// rows come back is here, and keyFor() below is the single place that turns it
+// into a cache key — callers pass meaning, not pre-formatted key fragments.
+export type ItemsQuery = {
+	scope: ItemsScope;
+	showDeleted: boolean;
+	// The signed-in user's id (or null for anonymous/public reads). Folded into
+	// the key so a cached entry can never be served to a different auth identity
+	// than the one it was fetched for — e.g. if the session in this tab changes
+	// without an explicit invalidateItemsCache() call, the old entry simply won't
+	// match the new identity's key.
+	identity: string | null;
+	// The page index, or "all" for the full search corpus.
+	page: number | "all";
+	// The exact status values the query filtered on.
+	statuses: string[];
+};
+
 // Short-lived cache of the inventory list, shared across every mount of the
 // dashboard route. Returning to the list within the TTL reuses the last fetch
 // instead of hitting the database again. The manual Refresh button forces a
 // fresh fetch; every mutation clears the cache so changes show up immediately.
 const TTL_MS = 30_000;
 
-type CacheEntry = { at: number; rows: ItemRow[] };
+export type CachedItems = { rows: ItemRow[]; count: number };
+
+type CacheEntry = { at: number } & CachedItems;
 
 const cache = new Map<string, CacheEntry>();
 
-// `identity` is the signed-in user's id (or null for anonymous/public reads). It's
-// folded into the key so a cached entry can never be served to a different auth
-// identity than the one it was fetched for — e.g. if the active session in this tab
-// changes (sign-out/sign-in, expiry, cross-tab auth sync) without an explicit
-// invalidateItemsCache() call, the old entry simply won't match the new identity's key.
-function keyFor(scope: ItemsScope, showDeleted: boolean, identity: string | null): string {
-	return `${scope}:${showDeleted}:${identity ?? "anon"}`;
+function keyFor(q: ItemsQuery): string {
+	const pageKey = q.page === "all" ? "all" : `p${q.page}`;
+	const statusKey = [...q.statuses].sort().join(",") || "none";
+	return `${q.scope}:${q.showDeleted}:${q.identity ?? "anon"}:${pageKey}:${statusKey}`;
 }
 
-/** Cached rows for this scope+identity, or null when there is no entry or it has expired. */
-export function getCachedItems(
-	scope: ItemsScope,
-	showDeleted: boolean,
-	identity: string | null
-): ItemRow[] | null {
-	const key = keyFor(scope, showDeleted, identity);
+/** Cached rows + total count for this query, or null when there is no entry or it has expired. */
+export function getCachedItems(q: ItemsQuery): CachedItems | null {
+	const key = keyFor(q);
 	const entry = cache.get(key);
 	if (!entry) return null;
 	if (Date.now() - entry.at >= TTL_MS) {
 		cache.delete(key);
 		return null;
 	}
-	return entry.rows;
+	const { at: _at, ...items } = entry;
+	return items;
 }
 
-export function setCachedItems(
-	scope: ItemsScope,
-	showDeleted: boolean,
-	identity: string | null,
-	rows: ItemRow[]
-): void {
-	cache.set(keyFor(scope, showDeleted, identity), { at: Date.now(), rows });
+export function setCachedItems(q: ItemsQuery, rows: ItemRow[], count: number): void {
+	cache.set(keyFor(q), { at: Date.now(), rows, count });
 }
 
 /**

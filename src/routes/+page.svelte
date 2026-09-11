@@ -30,6 +30,7 @@
     type ItemRow,
     type ItemStatus,
     type ItemsScope,
+    type ItemsQuery,
   } from "$lib/itemsCache";
   import { toast } from "svelte-sonner";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
@@ -78,6 +79,16 @@
   let pendingItemId: string | null = null;
   let statusUpdatingItemId: string | null = null;
   let loadItemsRequestId = 0;
+
+  // Pagination: hold only one page of rows in memory at a time (see plan). When a
+  // search query is active we fall back to loading the whole matching set so the
+  // fuzzy ranking in getFilteredItems is unchanged, and the pager is hidden.
+  const PAGE_SIZE = 12;
+  const SEARCH_ROW_CEILING = 5000;
+  let currentPage = 0;
+  let totalCount = 0;
+  let filterDebounce: ReturnType<typeof setTimeout>;
+  let itemsListEl: HTMLDivElement | undefined;
   let claimantDialogOpen = false;
   let claimantDialogItemId: string | null = null;
   let claimantDialogSaving = false;
@@ -89,6 +100,20 @@
   $: displayedItems = viewingDeleted ? deletedItems : items;
   $: filteredDisplayedItems = getFilteredItems(displayedItems, searchQuery, selectedStatusFilters);
   $: statusFilterSummary = getStatusFilterSummary(selectedStatusFilters);
+  $: searchMode = searchQuery.trim().length >= 1;
+  $: totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+
+  // The search box and the status dropdown both re-run the query from page 1;
+  // debounce so a burst of keystrokes / checkbox toggles is one fetch. Not forced
+  // — a status change lands on a fresh cache key, and re-typing the same search
+  // should reuse the already-loaded corpus rather than refetch it per keystroke.
+  function scheduleFilterReload() {
+    currentPage = 0;
+    clearTimeout(filterDebounce);
+    filterDebounce = setTimeout(() => {
+      void loadItems({ signedIn: isLibrarian, showDeleted: viewingDeleted, page: 0 });
+    }, 250);
+  }
 
   let isDark = false;
   let menuOpen = false;
@@ -377,13 +402,7 @@
   async function setViewingDeleted(nextValue: boolean) {
     if (!isLibrarian) return;
     viewingDeleted = nextValue;
-
-    if (viewingDeleted) {
-      await loadItems({ signedIn: true, showDeleted: true });
-      return;
-    }
-
-    await loadItems({ signedIn: true, showDeleted: false });
+    await loadItems({ signedIn: true, showDeleted: nextValue, page: 0 });
   }
 
   async function loadSession() {
@@ -398,7 +417,9 @@
     return normalized.includes("row-level security") || normalized.includes("permission denied") || normalized.includes("librarian access");
   }
 
-  async function loadItems(options: { signedIn?: boolean; showDeleted?: boolean; force?: boolean } = {}) {
+  async function loadItems(
+    options: { signedIn?: boolean; showDeleted?: boolean; force?: boolean; page?: number } = {},
+  ) {
     const requestId = ++loadItemsRequestId;
     const signedIn = options.signedIn ?? isLibrarian;
     const showDeleted = signedIn && (options.showDeleted ?? viewingDeleted);
@@ -416,15 +437,58 @@
       selectedStatusFilters = ["found"];
     }
 
-    // Serve the last fetch for this scope if it's still within the cache TTL,
+    const page = Math.max(0, options.page ?? currentPage);
+    // Any non-empty query switches to "load the whole matching set" mode so the
+    // fuzzy ranking in getFilteredItems sees every row, exactly as before
+    // pagination. The pager is hidden while searching.
+    const searching = searchQuery.trim().length >= 1;
+
+    const client = signedIn ? supabase : publicSupabase;
+    const columns = signedIn ? librarianItemSelectColumns : publicItemSelectColumns;
+    const table = showDeleted ? "deleted_items" : "items";
+
+    // Push the status filter into the query: with only one page of rows in memory
+    // a client-side status filter could hide every match. Anonymous visitors only
+    // ever see "found".
+    const effectiveStatuses = signedIn
+      ? selectedStatusFilters.length
+        ? selectedStatusFilters
+        : null
+      : ["found"];
+
+    const assignRows = (rows: ItemRow[]) => {
+      if (showDeleted) {
+        deletedItems = rows;
+      } else {
+        items = rows;
+      }
+    };
+
+    if (effectiveStatuses === null) {
+      // "No statuses" selected — nothing can match, so skip the round trip.
+      assignRows([]);
+      totalCount = 0;
+      itemsLoading = false;
+      return;
+    }
+
+    const cacheQuery: ItemsQuery = {
+      scope,
+      showDeleted,
+      identity,
+      page: searching ? "all" : page,
+      statuses: effectiveStatuses,
+    };
+
+    // Serve the last fetch for this query if it's still within the cache TTL,
     // unless the caller forced a refresh (the Refresh button).
     if (!options.force) {
-      const cachedRows = getCachedItems(scope, showDeleted, identity);
-      if (cachedRows) {
-        if (showDeleted) {
-          deletedItems = cachedRows;
-        } else {
-          items = cachedRows;
+      const cached = getCachedItems(cacheQuery);
+      if (cached) {
+        assignRows(cached.rows);
+        if (!searching) {
+          totalCount = cached.count;
+          currentPage = page;
         }
         itemsLoading = false;
         return;
@@ -433,19 +497,53 @@
 
     itemsLoading = true;
 
-    const query = signedIn
-      ? supabase
-          .from(showDeleted ? "deleted_items" : "items")
-          .select(librarianItemSelectColumns)
-          .in("status", statusOptions)
-          .order("created_at", { ascending: false })
-      : publicSupabase
-          .from("items")
-          .select(publicItemSelectColumns)
-          .eq("status", "found")
-          .order("created_at", { ascending: false });
+    // One query builder for both the paged fetch and the search-corpus chunks —
+    // same columns, status predicate and (created_at, id) order in every case.
+    const buildQuery = (lo: number, hi: number, withCount: boolean) =>
+      client
+        .from(table)
+        .select(columns, withCount ? { count: "exact" } : undefined)
+        .in("status", effectiveStatuses)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(lo, hi);
 
-    const { data, error } = await query;
+    if (searching) {
+      // Load the whole matching set in 1000-row chunks (past PostgREST's implicit
+      // cap) so getFilteredItems can fuzzy-rank exactly as before. Bounded by
+      // SEARCH_ROW_CEILING.
+      const rows: ItemRow[] = [];
+      for (let offset = 0; offset < SEARCH_ROW_CEILING; offset += 1000) {
+        const res = await buildQuery(offset, offset + 999, false);
+
+        if (requestId !== loadItemsRequestId) return;
+
+        if (res.error) {
+          itemsError = res.error.message;
+          if (isAuthorizationError(res.error.message)) {
+            authError = "This signed-in account is not approved for librarian tools.";
+          }
+          assignRows([]);
+          itemsLoading = false;
+          return;
+        }
+
+        const chunk = (res.data ?? []) as unknown as ItemRow[];
+        rows.push(...chunk);
+        if (chunk.length < 1000) break;
+      }
+
+      setCachedItems(cacheQuery, rows, totalCount);
+      assignRows(rows);
+      itemsLoading = false;
+      return;
+    }
+
+    // Only re-count when something changed (forced refresh, or landing on page 0);
+    // paging deeper reuses the total already known from the first load.
+    const withCount = Boolean(options.force) || page === 0;
+    const from = page * PAGE_SIZE;
+    const { data, error, count } = await buildQuery(from, from + PAGE_SIZE - 1, withCount);
 
     if (requestId !== loadItemsRequestId) return;
 
@@ -454,26 +552,25 @@
       if (isAuthorizationError(error.message)) {
         authError = "This signed-in account is not approved for librarian tools.";
       }
-      if (showDeleted) {
-        deletedItems = [];
-      } else {
-        items = [];
-      }
+      assignRows([]);
     } else {
-      const fetchedItems = ((data ?? []) as ItemRow[]).sort(
-        (a, b) => getItemDonationDate(a).getTime() - getItemDonationDate(b).getTime(),
-      );
-
-      setCachedItems(scope, showDeleted, identity, fetchedItems);
-
-      if (showDeleted) {
-        deletedItems = fetchedItems;
-      } else {
-        items = fetchedItems;
-      }
+      // DB order (created_at, id) is authoritative now that rows are paginated —
+      // no client re-sort, which would only ever see the current page.
+      const fetchedItems = (data ?? []) as unknown as ItemRow[];
+      totalCount = count ?? totalCount;
+      currentPage = page;
+      setCachedItems(cacheQuery, fetchedItems, totalCount);
+      assignRows(fetchedItems);
     }
 
     itemsLoading = false;
+  }
+
+  async function goToPage(next: number) {
+    const target = Math.min(Math.max(0, next), totalPages - 1);
+    if (target === currentPage || itemsLoading) return;
+    await loadItems({ signedIn: isLibrarian, showDeleted: viewingDeleted, page: target });
+    itemsListEl?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function handleLogout() {
@@ -485,6 +582,7 @@
     viewingDeleted = false;
     deletedItems = [];
     selectedStatusFilters = ["found"];
+    searchQuery = "";
 
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -492,7 +590,7 @@
     }
 
     invalidateItemsCache();
-    await loadItems({ signedIn: false, showDeleted: false });
+    await loadItems({ signedIn: false, showDeleted: false, page: 0 });
     authLoading = false;
   }
 
@@ -599,6 +697,10 @@
 
       items = items.filter((item) => item.id !== itemId);
       invalidateItemsCache();
+      // Refetch to backfill the row that left the page and correct the total
+      // count; step back a page if this emptied the last one.
+      const page = items.length === 0 && currentPage > 0 ? currentPage - 1 : currentPage;
+      await loadItems({ signedIn: isLibrarian, showDeleted: viewingDeleted, force: true, page });
 
       toast.success("Item deleted and archived successfully.");
     } catch (err) {
@@ -612,10 +714,10 @@
     isDark = document.documentElement.classList.contains("dark");
 
     void (async () => {
-      await loadItems({ signedIn: false, showDeleted: false });
+      await loadItems({ signedIn: false, showDeleted: false, page: 0 });
       const restoredSession = await loadSession();
       if (restoredSession) {
-        await loadItems({ signedIn: true, showDeleted: false });
+        await loadItems({ signedIn: true, showDeleted: false, page: 0 });
       }
     })();
 
@@ -627,12 +729,13 @@
       }
       viewingDeleted = false;
       selectedStatusFilters = nextSession ? [...statusOptions] : ["found"];
+      searchQuery = "";
 
       // onMount already loads the list for the restored session explicitly; the
       // initial event just echoes that same session, so skip the extra fetch.
       if (event === "INITIAL_SESSION") return;
 
-      void loadItems({ signedIn: Boolean(nextSession), showDeleted: false });
+      void loadItems({ signedIn: Boolean(nextSession), showDeleted: false, page: 0 });
     });
 
     const clockInterval = setInterval(() => {
@@ -642,6 +745,7 @@
     return () => {
       data.subscription.unsubscribe();
       clearInterval(clockInterval);
+      clearTimeout(filterDebounce);
     };
   });
 </script>
@@ -843,6 +947,7 @@
                 <Input
                   type="search"
                   bind:value={searchQuery}
+                  oninput={scheduleFilterReload}
                   class="h-10 bg-background pl-8 text-sm md:text-sm"
                   placeholder={viewingDeleted ? "Search archived items" : "Search by title, category, location, or description"}
                   aria-label={viewingDeleted ? "Search archived items" : "Search inventory"}
@@ -914,7 +1019,10 @@
                       <ChevronDown class="text-muted-foreground" />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
-                      <DropdownMenuCheckboxGroup bind:value={selectedStatusFilters}>
+                      <DropdownMenuCheckboxGroup
+                        bind:value={selectedStatusFilters}
+                        onValueChange={scheduleFilterReload}
+                      >
                         {#each (isLibrarian ? statusOptions : (["found"] as ItemStatus[])) as option}
                           <DropdownMenuCheckboxItem value={option} closeOnSelect={false}>
                             {formatStatusLabel(option)}
@@ -968,7 +1076,7 @@
 
         <Separator class="bg-border/80" />
 
-        <div class="px-4 pt-5">
+        <div bind:this={itemsListEl} class="px-4 pt-5">
         {#if itemsLoading}
           <p class="text-muted-foreground">Loading items...</p>
         {:else if itemsError}
@@ -1282,6 +1390,30 @@
                 </tbody>
               </table>
             </div>
+          {/if}
+
+          {#if !searchMode && totalPages > 1}
+            <nav class="mt-8 flex items-center justify-center gap-3" aria-label="Pagination">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage === 0 || itemsLoading}
+                onclick={() => goToPage(currentPage - 1)}
+              >
+                Previous
+              </Button>
+              <span class="text-sm text-muted-foreground">
+                Page {currentPage + 1} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage >= totalPages - 1 || itemsLoading}
+                onclick={() => goToPage(currentPage + 1)}
+              >
+                Next
+              </Button>
+            </nav>
           {/if}
         {/if}
         </div>
