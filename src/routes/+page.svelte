@@ -626,6 +626,11 @@
 
     items = items.map((item) => (item.id === itemId ? (data as ItemRow) : item));
     invalidateItemsCache();
+    // Refetch to backfill the row that dropped out of the filtered page and
+    // correct the total count; step back a page if this emptied the last one.
+    const remainingOnPage = items.filter((item) => selectedStatusFilters.includes(item.status)).length;
+    const page = remainingOnPage === 0 && currentPage > 0 ? currentPage - 1 : currentPage;
+    await loadItems({ signedIn: isLibrarian, showDeleted: viewingDeleted, force: true, page });
     claimantDialogOpen = false;
     toast.success("Item marked as claimed.");
   }
@@ -652,6 +657,11 @@
 
     items = items.map((item) => (item.id === itemId ? (data as ItemRow) : item));
     invalidateItemsCache();
+    // Refetch to backfill the row that dropped out of the filtered page and
+    // correct the total count; step back a page if this emptied the last one.
+    const remainingOnPage = items.filter((item) => selectedStatusFilters.includes(item.status)).length;
+    const page = remainingOnPage === 0 && currentPage > 0 ? currentPage - 1 : currentPage;
+    await loadItems({ signedIn: isLibrarian, showDeleted: viewingDeleted, force: true, page });
     toast.success("Item marked as at library.");
   }
 
