@@ -5,6 +5,8 @@
   import { ArrowLeft } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
+  import { compressImage, extensionForType, getImageRejectionReason } from "$lib/imageCompression";
+  import { invalidateItemsCache } from "$lib/itemsCache";
   import { toast } from "svelte-sonner";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
   import { Button } from "$lib/components/ui/button";
@@ -143,13 +145,15 @@
 
     let newImageUrl: string | null = imageUrl;
 
-    if (imageFile) {
-      const fileExt = imageFile.name.split(".").pop() || "jpg";
+    const selectedFile = imageFile;
+    if (selectedFile) {
+      const uploadFile = await compressImage(selectedFile);
+      const fileExt = extensionForType(uploadFile, selectedFile.name);
       const filePath = `${session.user.id}/${crypto.randomUUID()}.${fileExt}`;
       const { error: uploadError } = await supabase.storage
         .from(imageBucket)
-        .upload(filePath, imageFile, {
-          contentType: imageFile.type,
+        .upload(filePath, uploadFile, {
+          contentType: uploadFile.type,
           upsert: false,
         });
 
@@ -187,6 +191,7 @@
         ? "This signed-in account is not approved to update inventory."
         : "Failed to update item: " + error.message;
     } else {
+      invalidateItemsCache();
       toast.success("Item updated successfully.");
       await goto("/");
     }
@@ -222,6 +227,7 @@
 
     status = data.status;
     claimedByEmail = data.claimed_by_email ?? "";
+    invalidateItemsCache();
     claimantDialogOpen = false;
     toast.success("Item marked as claimed.");
   }
@@ -245,6 +251,7 @@
 
     status = data.status;
     claimedByEmail = data.claimed_by_email ?? "";
+    invalidateItemsCache();
     toast.success("Item marked as at library.");
   }
 
@@ -405,7 +412,18 @@
                 accept="image/*"
                 class="bg-background text-sm"
                 onchange={(event: Event) => {
-                  const file = (event.currentTarget as HTMLInputElement).files?.[0];
+                  const input = event.currentTarget as HTMLInputElement;
+                  const file = input.files?.[0];
+                  if (file) {
+                    const rejectionReason = getImageRejectionReason(file);
+                    if (rejectionReason) {
+                      formError = rejectionReason;
+                      input.value = "";
+                      imageFile = null;
+                      return;
+                    }
+                  }
+                  formError = "";
                   imageFile = file ?? null;
                 }}
               />
