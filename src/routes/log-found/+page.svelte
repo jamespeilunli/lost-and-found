@@ -88,9 +88,10 @@
 
     let imageUrl: string | null = null;
 
-    if (imageFile) {
-      const uploadFile = await compressImage(imageFile);
-      const fileExt = extensionForType(uploadFile, imageFile.name);
+    const selectedFile = imageFile;
+    if (selectedFile) {
+      const uploadFile = await compressImage(selectedFile);
+      const fileExt = extensionForType(uploadFile, selectedFile.name);
       const filePath = `${session.user.id}/${crypto.randomUUID()}.${fileExt}`;
       const { error: uploadError } = await supabase.storage
         .from(imageBucket)
