@@ -386,7 +386,7 @@
             </div>
 
             <div class="space-y-2">
-              <Label class="text-sm" for="manual-due-date-input">Pickup deadline override</Label>
+              <Label class="text-sm" for="manual-due-date-input">Pickup deadline</Label>
               <Input
                 id="manual-due-date-input"
                 type="date"

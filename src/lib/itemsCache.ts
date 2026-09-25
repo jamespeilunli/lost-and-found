@@ -9,7 +9,7 @@ export type ItemRow = {
 	image_url: string | null;
 	location_found: string | null;
 	created_at: string;
-	manual_due_date: string | null;
+	manual_due_date: string;
 	claimed_by_email: string | null;
 };
 

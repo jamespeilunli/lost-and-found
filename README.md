@@ -92,3 +92,8 @@ Preview the production build:
 ```bash
 npm run preview
 ```
+
+## Stored pickup deadlines
+
+For the database-first rollout and compatibility checks with production `main`, see
+[the deadline rollout runbook](supabase/operations/deadline-rollout.md).

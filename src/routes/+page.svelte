@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { fromDate, parseZonedDateTime } from "@internationalized/date";
   import {
     Sun,
     Moon,
@@ -169,11 +170,6 @@
   // next clearing is the final moment of the current month.
   let now = new Date();
 
-  // Items must sit at the library for a minimum grace period before they are
-  // eligible for a month-end clearing, so something logged late in the month
-  // rolls over to the next month's clearing rather than being donated days later.
-  const GRACE_PERIOD_DAYS = 14;
-
   type UrgencyLevel = "normal" | "warning" | "critical";
   type Countdown = {
     totalMs: number;
@@ -185,26 +181,13 @@
   };
 
   function getNextClearingDate(reference: Date) {
-    return new Date(reference.getFullYear(), reference.getMonth() + 1, 0, 23, 59, 59, 999);
-  }
-
-  // The earliest month-end clearing that occurs after the item has been at the
-  // library for the full grace period.
-  function getAutomaticDueDate(createdAt: string) {
-    const eligibleFrom = new Date(createdAt);
-    eligibleFrom.setDate(eligibleFrom.getDate() + GRACE_PERIOD_DAYS);
-    return getNextClearingDate(eligibleFrom);
-  }
-
-  function parseManualDueDate(value: string | null) {
-    if (!value) return null;
-    const [year, month, day] = value.split("-").map(Number);
-    if (!year || !month || !day) return null;
-    return new Date(year, month - 1, day, 23, 59, 59, 999);
+    return fromDate(reference, "America/Los_Angeles")
+      .set({ day: 1, hour: 23, minute: 59, second: 59, millisecond: 999 })
+      .add({ months: 1 }).subtract({ days: 1 }).toDate();
   }
 
   function getItemDonationDate(item: ItemRow) {
-    return parseManualDueDate(item.manual_due_date) ?? getAutomaticDueDate(item.created_at);
+    return parseZonedDateTime(`${item.manual_due_date}T23:59:59.999[America/Los_Angeles]`).toDate();
   }
 
   function getCountdown(target: Date, current: Date): Countdown {
@@ -219,11 +202,11 @@
   }
 
   function formatClearingDate(date: Date) {
-    return date.toLocaleDateString(undefined, { month: "long", day: "numeric" });
+    return date.toLocaleDateString(undefined, { timeZone: "America/Los_Angeles", month: "long", day: "numeric" });
   }
 
   function formatDueDate(date: Date) {
-    return date.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
+    return date.toLocaleDateString(undefined, { timeZone: "America/Los_Angeles", month: "long", day: "numeric", year: "numeric" });
   }
 
   function formatCountdown(c: Countdown) {
@@ -498,12 +481,13 @@
     itemsLoading = true;
 
     // One query builder for both the paged fetch and the search-corpus chunks —
-    // same columns, status predicate and (created_at, id) order in every case.
+    // same columns, status predicate and (manual_due_date, created_at, id) order in every case.
     const buildQuery = (lo: number, hi: number, withCount: boolean) =>
       client
         .from(table)
         .select(columns, withCount ? { count: "exact" } : undefined)
         .in("status", effectiveStatuses)
+        .order("manual_due_date", { ascending: true })
         .order("created_at", { ascending: true })
         .order("id", { ascending: true })
         .range(lo, hi);
@@ -554,7 +538,7 @@
       }
       assignRows([]);
     } else {
-      // DB order (created_at, id) is authoritative now that rows are paginated —
+      // DB order (manual_due_date, created_at, id) is authoritative now that rows are paginated —
       // no client re-sort, which would only ever see the current page.
       const fetchedItems = (data ?? []) as unknown as ItemRow[];
       totalCount = count ?? totalCount;
