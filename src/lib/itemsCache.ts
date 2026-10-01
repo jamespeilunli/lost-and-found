@@ -1,4 +1,4 @@
-export type ItemStatus = "found" | "claimed";
+import type { ItemStatus } from "./itemStatus";
 
 export type ItemRow = {
 	id: string;

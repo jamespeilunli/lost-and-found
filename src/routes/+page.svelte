@@ -29,20 +29,21 @@
     setCachedItems,
     invalidateItemsCache,
     type ItemRow,
-    type ItemStatus,
     type ItemsScope,
     type ItemsQuery,
   } from "$lib/itemsCache";
+  import { otherStatuses, statusBadgeClasses, statusLabels, statusOptions, type ItemStatus } from "$lib/itemStatus";
   import { toast } from "svelte-sonner";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
   import { Badge } from "$lib/components/ui/badge";
-  import { Button } from "$lib/components/ui/button";
+  import { Button, buttonVariants } from "$lib/components/ui/button";
   import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "$lib/components/ui/card";
   import {
     DropdownMenu,
     DropdownMenuCheckboxGroup,
     DropdownMenuCheckboxItem,
     DropdownMenuContent,
+    DropdownMenuItem,
     DropdownMenuRadioGroup,
     DropdownMenuRadioItem,
     DropdownMenuTrigger,
@@ -53,11 +54,6 @@
 
   type ViewMode = "cards" | "table";
 
-  const statusOptions: ItemStatus[] = ["found", "claimed"];
-  const statusLabels: Record<ItemStatus, string> = {
-    found: "At library",
-    claimed: "Claimed",
-  };
   const toolbarDropdownTriggerClass =
     "flex h-8 w-[176px] items-center justify-between gap-1.5 rounded-none border border-input bg-transparent py-2 pr-2 pl-2.5 text-xs whitespace-nowrap transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 aria-expanded:bg-muted [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0";
   const publicItemSelectColumns = "id,title,description,category,status,image_url,location_found,created_at,manual_due_date";
@@ -139,20 +135,6 @@
     if (event.key === "Escape" && menuOpen) {
       closeMenu();
     }
-  }
-
-  function statusBadgeVariant(status: ItemStatus) {
-    if (status === "found") {
-      return "bg-emerald-100 text-emerald-900 uppercase dark:bg-emerald-950 dark:text-emerald-300";
-    }
-
-    if (status === "claimed") {
-      return "bg-sky-100 text-sky-900 uppercase dark:bg-sky-950 dark:text-sky-300";
-    }
-  }
-
-  function formatStatusLabel(status: ItemStatus) {
-    return statusLabels[status];
   }
 
   function formatItemDate(value: string) {
@@ -294,7 +276,7 @@
       { value: item.location_found, weight: 3 },
       { value: item.description, weight: 2 },
       { value: item.status, weight: 1 },
-      { value: formatStatusLabel(item.status), weight: 1 },
+      { value: statusLabels[item.status], weight: 1 },
     ].map(({ value, weight }) => ({
       text: normalizeSearchValue(value),
       weight,
@@ -350,7 +332,7 @@
       return "No statuses";
     }
 
-    return selectedStatuses.map((status) => formatStatusLabel(status as ItemStatus)).join(", ");
+    return selectedStatuses.map((status) => statusLabels[status as ItemStatus]).join(", ");
   }
 
   function shouldShowDescriptionToggle(description: string | null, maxLength: number) {
@@ -609,24 +591,37 @@
     }
 
     items = items.map((item) => (item.id === itemId ? (data as ItemRow) : item));
-    invalidateItemsCache();
-    // Refetch to backfill the row that dropped out of the filtered page and
-    // correct the total count; step back a page if this emptied the last one.
-    const remainingOnPage = items.filter((item) => selectedStatusFilters.includes(item.status)).length;
-    const page = remainingOnPage === 0 && currentPage > 0 ? currentPage - 1 : currentPage;
-    await loadItems({ signedIn: isLibrarian, showDeleted: viewingDeleted, force: true, page });
+    await reloadAfterMutation();
     claimantDialogOpen = false;
     toast.success("Item marked as claimed.");
   }
 
-  async function markItemAtLibrary(itemId: string) {
+  // Call after patching `items` locally for a mutation. Refetches to backfill any
+  // row that left the filtered page and correct the total count, stepping back a
+  // page if this emptied the last one.
+  async function reloadAfterMutation() {
+    invalidateItemsCache();
+    const remainingOnPage = items.filter((item) => selectedStatusFilters.includes(item.status)).length;
+    const page = remainingOnPage === 0 && currentPage > 0 ? currentPage - 1 : currentPage;
+    await loadItems({ signedIn: isLibrarian, showDeleted: viewingDeleted, force: true, page });
+  }
+
+  function changeItemStatus(item: ItemRow, status: ItemStatus) {
+    if (status === "claimed") {
+      openClaimantDialog(item);
+    } else {
+      void setItemStatus(item.id, status);
+    }
+  }
+
+  async function setItemStatus(itemId: string, status: ItemStatus) {
     if (!isLibrarian || statusUpdatingItemId) return;
 
     statusUpdatingItemId = itemId;
 
     const { data, error } = await supabase
       .from("items")
-      .update({ status: "found" })
+      .update({ status })
       .eq("id", itemId)
       .select(librarianItemSelectColumns)
       .single();
@@ -640,13 +635,8 @@
     }
 
     items = items.map((item) => (item.id === itemId ? (data as ItemRow) : item));
-    invalidateItemsCache();
-    // Refetch to backfill the row that dropped out of the filtered page and
-    // correct the total count; step back a page if this emptied the last one.
-    const remainingOnPage = items.filter((item) => selectedStatusFilters.includes(item.status)).length;
-    const page = remainingOnPage === 0 && currentPage > 0 ? currentPage - 1 : currentPage;
-    await loadItems({ signedIn: isLibrarian, showDeleted: viewingDeleted, force: true, page });
-    toast.success("Item marked as at library.");
+    await reloadAfterMutation();
+    toast.success(`Item marked as ${statusLabels[status].toLowerCase()}.`);
   }
 
   async function deleteItem(itemId: string) {
@@ -690,11 +680,7 @@
       }
 
       items = items.filter((item) => item.id !== itemId);
-      invalidateItemsCache();
-      // Refetch to backfill the row that left the page and correct the total
-      // count; step back a page if this emptied the last one.
-      const page = items.length === 0 && currentPage > 0 ? currentPage - 1 : currentPage;
-      await loadItems({ signedIn: isLibrarian, showDeleted: viewingDeleted, force: true, page });
+      await reloadAfterMutation();
 
       toast.success("Item deleted and archived successfully.");
     } catch (err) {
@@ -1019,7 +1005,7 @@
                       >
                         {#each (isLibrarian ? statusOptions : (["found"] as ItemStatus[])) as option}
                           <DropdownMenuCheckboxItem value={option} closeOnSelect={false}>
-                            {formatStatusLabel(option)}
+                            {statusLabels[option]}
                           </DropdownMenuCheckboxItem>
                         {/each}
                       </DropdownMenuCheckboxGroup>
@@ -1107,8 +1093,8 @@
                   <CardContent class={`border-border/80 flex-1 space-y-4 ${showItemActions ? "" : "pb-4"}`}>
                     <div class="flex items-start justify-between gap-3">
                       <h3 class="text-base font-semibold md:text-lg">{item.title}</h3>
-                      <Badge class={`${statusBadgeVariant(item.status)} text-sm`}>
-                        {formatStatusLabel(item.status)}
+                      <Badge class={`${statusBadgeClasses[item.status]} text-sm uppercase`}>
+                        {statusLabels[item.status]}
                       </Badge>
                     </div>
                     <div>
@@ -1188,19 +1174,22 @@
                   {#if showItemActions}
                     <CardFooter class="border-border/80 flex items-center justify-between gap-2 bg-card px-4 py-4">
                       <div class="flex flex-wrap items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          class="text-sm"
-                          onclick={() => item.status === "found" ? openClaimantDialog(item) : markItemAtLibrary(item.id)}
-                          disabled={statusUpdatingItemId === item.id || claimantDialogSaving}
-                        >
-                          {statusUpdatingItemId === item.id
-                            ? "Updating..."
-                            : item.status === "found"
-                              ? "Mark as claimed"
-                              : "Mark as at library"}
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            class={`${buttonVariants({ variant: "outline", size: "sm" })} text-sm`}
+                            disabled={statusUpdatingItemId === item.id || claimantDialogSaving}
+                          >
+                            {statusUpdatingItemId === item.id ? "Updating..." : "Change status"}
+                            <ChevronDown />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            {#each otherStatuses[item.status] as option}
+                              <DropdownMenuItem onSelect={() => changeItemStatus(item, option)}>
+                                Mark as {statusLabels[option].toLowerCase()}
+                              </DropdownMenuItem>
+                            {/each}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         <Button href={`/edit/${item.id}`} variant="outline" size="sm" class="text-sm">Edit</Button>
                       </div>
                       <Button
@@ -1292,8 +1281,8 @@
                         </div>
                       </td>
                       <td class="px-4 py-4">
-                        <Badge class={`${statusBadgeVariant(item.status)} text-sm`}>
-                          {formatStatusLabel(item.status)}
+                        <Badge class={`${statusBadgeClasses[item.status]} text-sm uppercase`}>
+                          {statusLabels[item.status]}
                         </Badge>
                       </td>
                       <td class="px-4 py-4">
@@ -1346,19 +1335,17 @@
                             </summary>
                             <div class="absolute right-0 top-10 z-20 w-56 rounded-md border border-border/80 bg-popover p-2 shadow-md">
                               <div class="flex flex-col gap-1">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  class="justify-start text-sm"
-                                  onclick={() => item.status === "found" ? openClaimantDialog(item) : markItemAtLibrary(item.id)}
-                                  disabled={statusUpdatingItemId === item.id || claimantDialogSaving}
-                                >
-                                  {statusUpdatingItemId === item.id
-                                    ? "Updating..."
-                                    : item.status === "found"
-                                      ? "Mark as claimed"
-                                      : "Mark as at library"}
-                                </Button>
+                                {#each otherStatuses[item.status] as option}
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    class="justify-start text-sm"
+                                    onclick={() => changeItemStatus(item, option)}
+                                    disabled={statusUpdatingItemId === item.id || claimantDialogSaving}
+                                  >
+                                    Mark as {statusLabels[option].toLowerCase()}
+                                  </Button>
+                                {/each}
                                 <Button href={`/edit/${item.id}`} variant="outline" size="sm" class="justify-start text-sm">Edit item</Button>
                                 <Button
                                   variant="destructive"
