@@ -601,7 +601,7 @@
   // page if this emptied the last one.
   async function reloadAfterMutation() {
     invalidateItemsCache();
-    const remainingOnPage = items.filter((item) => selectedStatusFilters.includes(item.status)).length;
+    const remainingOnPage = displayedItems.filter((item) => selectedStatusFilters.includes(item.status)).length;
     const page = remainingOnPage === 0 && currentPage > 0 ? currentPage - 1 : currentPage;
     await loadItems({ signedIn: isLibrarian, showDeleted: viewingDeleted, force: true, page });
   }
@@ -639,6 +639,26 @@
     toast.success(`Item marked as ${statusLabels[status].toLowerCase()}.`);
   }
 
+  // Row projection shared by archive (deleteItem) and restore (restoreItem):
+  // items and deleted_items have the same column shape, so both directions copy
+  // the identical field set. Keep this in lockstep with the Postgres insert
+  // grants on both tables.
+  function toMovableItemRow(item: ItemRow, userId: string | null) {
+    return {
+      id: item.id,
+      title: item.title,
+      description: item.description,
+      category: item.category,
+      status: item.status,
+      image_url: item.image_url,
+      location_found: item.location_found,
+      created_at: item.created_at,
+      created_by: userId,
+      manual_due_date: item.manual_due_date,
+      claimed_by_email: item.claimed_by_email,
+    };
+  }
+
   async function deleteItem(itemId: string) {
     if (!isLibrarian) return;
 
@@ -647,19 +667,7 @@
 
     try {
       pendingItemId = itemId;
-      const toInsert = {
-        id: item.id,
-        title: item.title,
-        description: item.description,
-        category: item.category,
-        status: item.status,
-        image_url: item.image_url,
-        location_found: item.location_found,
-        created_at: item.created_at,
-        created_by: session?.user.id ?? null,
-        manual_due_date: item.manual_due_date,
-        claimed_by_email: item.claimed_by_email,
-      };
+      const toInsert = toMovableItemRow(item, session?.user.id ?? null);
 
       const { error: insertError } = await supabase.from("deleted_items").insert([toInsert]);
 
@@ -683,6 +691,45 @@
       await reloadAfterMutation();
 
       toast.success("Item deleted and archived successfully.");
+    } catch (err) {
+      pendingItemId = null;
+      itemsError = (err as Error).message;
+      toast.error("An unexpected error occurred: " + (err as Error).message);
+    }
+  }
+
+  async function restoreItem(itemId: string) {
+    if (!isLibrarian) return;
+
+    const item = deletedItems.find((i) => i.id === itemId);
+    if (!item) return;
+
+    try {
+      pendingItemId = itemId;
+      const toInsert = toMovableItemRow(item, session?.user.id ?? null);
+
+      const { error: insertError } = await supabase.from("items").insert([toInsert]);
+
+      if (insertError) {
+        pendingItemId = null;
+        itemsError = insertError.message;
+        toast.error("Failed to restore item: " + insertError.message);
+        return;
+      }
+
+      const { error } = await supabase.from("deleted_items").delete().eq("id", itemId);
+      pendingItemId = null;
+
+      if (error) {
+        itemsError = error.message;
+        toast.error("Item was restored but removing the archived copy failed: " + error.message);
+        return;
+      }
+
+      deletedItems = deletedItems.filter((item) => item.id !== itemId);
+      await reloadAfterMutation();
+
+      toast.success("Item restored to the public list.");
     } catch (err) {
       pendingItemId = null;
       itemsError = (err as Error).message;
@@ -1090,7 +1137,7 @@
                     </div>
                   {/if}
 
-                  <CardContent class={`border-border/80 flex-1 space-y-4 ${showItemActions ? "" : "pb-4"}`}>
+                  <CardContent class={`border-border/80 flex-1 space-y-4 ${isLibrarian ? "" : "pb-4"}`}>
                     <div class="flex items-start justify-between gap-3">
                       <h3 class="text-base font-semibold md:text-lg">{item.title}</h3>
                       <Badge class={`${statusBadgeClasses[item.status]} text-sm uppercase`}>
@@ -1203,6 +1250,18 @@
                         }}
                       >
                         {isLibrarian ? "Archive item" : "Delete"}
+                      </Button>
+                    </CardFooter>
+                  {:else if isLibrarian}
+                    <CardFooter class="border-border/80 flex items-center justify-end gap-2 bg-card px-4 py-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        class="text-sm"
+                        disabled={pendingItemId === item.id}
+                        onclick={() => restoreItem(item.id)}
+                      >
+                        {pendingItemId === item.id ? "Restoring..." : "Restore item"}
                       </Button>
                     </CardFooter>
                   {/if}
@@ -1362,6 +1421,16 @@
                               </div>
                             </div>
                           </details>
+                        {:else if isLibrarian}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            class="text-sm"
+                            disabled={pendingItemId === item.id}
+                            onclick={() => restoreItem(item.id)}
+                          >
+                            {pendingItemId === item.id ? "Restoring..." : "Restore item"}
+                          </Button>
                         {:else}
                           <span class="text-muted-foreground">No actions</span>
                         {/if}
