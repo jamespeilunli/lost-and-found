@@ -10,7 +10,7 @@ Production: https://mvhs-lost-and-found.vercel.app
 - Invite-only librarian email/password sign-in
 - Librarian password setup and reset
 - Librarian-only found item logging
-- Item statuses: `found`, `claimed`
+- Item statuses: `found`, `claimed`, `donated`
 - Librarian-only claimant email tracking
 - Automatic pickup deadlines with optional manual overrides
 - Optional image upload for items
@@ -92,3 +92,8 @@ Preview the production build:
 ```bash
 npm run preview
 ```
+
+## Stored pickup deadlines
+
+For the database-first rollout and compatibility checks with production `main`, see
+[the deadline rollout runbook](supabase/operations/deadline-rollout.md).

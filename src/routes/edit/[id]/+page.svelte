@@ -2,12 +2,15 @@
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
-  import { ArrowLeft } from "lucide-svelte";
+  import { ArrowLeft, ChevronDown } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { supabase } from "$lib/supabaseClient";
+  import { compressImage, extensionForType, getImageRejectionReason } from "$lib/imageCompression";
+  import { invalidateItemsCache } from "$lib/itemsCache";
+  import { otherStatuses, statusLabels, type ItemStatus } from "$lib/itemStatus";
   import { toast } from "svelte-sonner";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
-  import { Button } from "$lib/components/ui/button";
+  import { Button, buttonVariants } from "$lib/components/ui/button";
   import {
     Card,
     CardContent,
@@ -16,6 +19,12 @@
     CardHeader,
     CardTitle,
   } from "$lib/components/ui/card";
+  import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+  } from "$lib/components/ui/dropdown-menu";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import {
@@ -45,12 +54,12 @@
   let selectedCategory = "";
   let customCategory = "";
   let locationFound = "";
-  let status = "found";
+  let status: ItemStatus = "found";
   let claimedByEmail = "";
   let manualDueDate = "";
   let imageUrl: string | null = null;
 
-  $: headingText = status === "claimed" ? "Edit claimed item" : "Edit item at library";
+  $: headingText = status === "found" ? "Edit item at library" : `Edit ${statusLabels[status].toLowerCase()} item`;
   $: subtitleText = "Update the inventory details and pickup deadline.";
 
   let imageFile: File | null = null;
@@ -143,13 +152,15 @@
 
     let newImageUrl: string | null = imageUrl;
 
-    if (imageFile) {
-      const fileExt = imageFile.name.split(".").pop() || "jpg";
+    const selectedFile = imageFile;
+    if (selectedFile) {
+      const uploadFile = await compressImage(selectedFile);
+      const fileExt = extensionForType(uploadFile, selectedFile.name);
       const filePath = `${session.user.id}/${crypto.randomUUID()}.${fileExt}`;
       const { error: uploadError } = await supabase.storage
         .from(imageBucket)
-        .upload(filePath, imageFile, {
-          contentType: imageFile.type,
+        .upload(filePath, uploadFile, {
+          contentType: uploadFile.type,
           upsert: false,
         });
 
@@ -187,6 +198,7 @@
         ? "This signed-in account is not approved to update inventory."
         : "Failed to update item: " + error.message;
     } else {
+      invalidateItemsCache();
       toast.success("Item updated successfully.");
       await goto("/");
     }
@@ -222,17 +234,26 @@
 
     status = data.status;
     claimedByEmail = data.claimed_by_email ?? "";
+    invalidateItemsCache();
     claimantDialogOpen = false;
     toast.success("Item marked as claimed.");
   }
 
-  async function markItemAtLibrary() {
+  function changeStatus(nextStatus: ItemStatus) {
+    if (nextStatus === "claimed") {
+      openClaimantDialog();
+    } else {
+      void setItemStatus(nextStatus);
+    }
+  }
+
+  async function setItemStatus(nextStatus: ItemStatus) {
     if (!session?.user || statusLoading) return;
 
     statusLoading = true;
     const { data, error } = await supabase
       .from("items")
-      .update({ status: "found" })
+      .update({ status: nextStatus })
       .eq("id", itemId)
       .select(itemSelectColumns)
       .single();
@@ -245,7 +266,8 @@
 
     status = data.status;
     claimedByEmail = data.claimed_by_email ?? "";
-    toast.success("Item marked as at library.");
+    invalidateItemsCache();
+    toast.success(`Item marked as ${statusLabels[nextStatus].toLowerCase()}.`);
   }
 
   onMount(() => {
@@ -347,21 +369,23 @@
             <div class="flex flex-col gap-2">
               <Label class="text-sm">Status</Label>
               <div class="flex flex-wrap items-center gap-2">
-                <span class="text-sm font-medium">{status === "claimed" ? "Claimed" : "At library"}</span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  class="text-sm"
-                  onclick={() => status === "claimed" ? markItemAtLibrary() : openClaimantDialog()}
-                  disabled={statusLoading || claimantDialogSaving}
-                >
-                  {statusLoading
-                    ? "Updating..."
-                    : status === "claimed"
-                      ? "Mark as at library"
-                      : "Mark as claimed"}
-                </Button>
+                <span class="text-sm font-medium">{statusLabels[status]}</span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    class={`${buttonVariants({ variant: "outline", size: "sm" })} text-sm`}
+                    disabled={statusLoading || claimantDialogSaving}
+                  >
+                    {statusLoading ? "Updating..." : "Change status"}
+                    <ChevronDown />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    {#each otherStatuses[status] as option}
+                      <DropdownMenuItem onSelect={() => changeStatus(option)}>
+                        Mark as {statusLabels[option].toLowerCase()}
+                      </DropdownMenuItem>
+                    {/each}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
 
@@ -379,7 +403,7 @@
             </div>
 
             <div class="space-y-2">
-              <Label class="text-sm" for="manual-due-date-input">Pickup deadline override</Label>
+              <Label class="text-sm" for="manual-due-date-input">Pickup deadline</Label>
               <Input
                 id="manual-due-date-input"
                 type="date"
@@ -405,7 +429,18 @@
                 accept="image/*"
                 class="bg-background text-sm"
                 onchange={(event: Event) => {
-                  const file = (event.currentTarget as HTMLInputElement).files?.[0];
+                  const input = event.currentTarget as HTMLInputElement;
+                  const file = input.files?.[0];
+                  if (file) {
+                    const rejectionReason = getImageRejectionReason(file);
+                    if (rejectionReason) {
+                      formError = rejectionReason;
+                      input.value = "";
+                      imageFile = null;
+                      return;
+                    }
+                  }
+                  formError = "";
                   imageFile = file ?? null;
                 }}
               />

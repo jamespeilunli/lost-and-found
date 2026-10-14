@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { fromDate, parseZonedDateTime } from "@internationalized/date";
   import {
     Sun,
     Moon,
@@ -23,16 +24,26 @@
   } from "lucide-svelte";
   import type { Session } from "@supabase/supabase-js";
   import { publicSupabase, supabase } from "$lib/supabaseClient";
+  import {
+    getCachedItems,
+    setCachedItems,
+    invalidateItemsCache,
+    type ItemRow,
+    type ItemsScope,
+    type ItemsQuery,
+  } from "$lib/itemsCache";
+  import { otherStatuses, statusBadgeClasses, statusLabels, statusOptions, type ItemStatus } from "$lib/itemStatus";
   import { toast } from "svelte-sonner";
   import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
   import { Badge } from "$lib/components/ui/badge";
-  import { Button } from "$lib/components/ui/button";
+  import { Button, buttonVariants } from "$lib/components/ui/button";
   import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "$lib/components/ui/card";
   import {
     DropdownMenu,
     DropdownMenuCheckboxGroup,
     DropdownMenuCheckboxItem,
     DropdownMenuContent,
+    DropdownMenuItem,
     DropdownMenuRadioGroup,
     DropdownMenuRadioItem,
     DropdownMenuTrigger,
@@ -41,27 +52,8 @@
   import { Separator } from "$lib/components/ui/separator";
   import ClaimantEmailDialog from "$lib/components/ClaimantEmailDialog.svelte";
 
-  type ItemStatus = "found" | "claimed";
   type ViewMode = "cards" | "table";
 
-  type ItemRow = {
-    id: string;
-    title: string;
-    description: string | null;
-    category: string | null;
-    status: ItemStatus;
-    image_url: string | null;
-    location_found: string | null;
-    created_at: string;
-    manual_due_date: string | null;
-    claimed_by_email: string | null;
-  };
-
-  const statusOptions: ItemStatus[] = ["found", "claimed"];
-  const statusLabels: Record<ItemStatus, string> = {
-    found: "At library",
-    claimed: "Claimed",
-  };
   const toolbarDropdownTriggerClass =
     "flex h-8 w-[176px] items-center justify-between gap-1.5 rounded-none border border-input bg-transparent py-2 pr-2 pl-2.5 text-xs whitespace-nowrap transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 aria-expanded:bg-muted [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0";
   const publicItemSelectColumns = "id,title,description,category,status,image_url,location_found,created_at,manual_due_date";
@@ -84,6 +76,16 @@
   let pendingItemId: string | null = null;
   let statusUpdatingItemId: string | null = null;
   let loadItemsRequestId = 0;
+
+  // Pagination: hold only one page of rows in memory at a time (see plan). When a
+  // search query is active we fall back to loading the whole matching set so the
+  // fuzzy ranking in getFilteredItems is unchanged, and the pager is hidden.
+  const PAGE_SIZE = 12;
+  const SEARCH_ROW_CEILING = 5000;
+  let currentPage = 0;
+  let totalCount = 0;
+  let filterDebounce: ReturnType<typeof setTimeout>;
+  let itemsListEl: HTMLDivElement | undefined;
   let claimantDialogOpen = false;
   let claimantDialogItemId: string | null = null;
   let claimantDialogSaving = false;
@@ -95,6 +97,20 @@
   $: displayedItems = viewingDeleted ? deletedItems : items;
   $: filteredDisplayedItems = getFilteredItems(displayedItems, searchQuery, selectedStatusFilters);
   $: statusFilterSummary = getStatusFilterSummary(selectedStatusFilters);
+  $: searchMode = searchQuery.trim().length >= 1;
+  $: totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+
+  // The search box and the status dropdown both re-run the query from page 1;
+  // debounce so a burst of keystrokes / checkbox toggles is one fetch. Not forced
+  // — a status change lands on a fresh cache key, and re-typing the same search
+  // should reuse the already-loaded corpus rather than refetch it per keystroke.
+  function scheduleFilterReload() {
+    currentPage = 0;
+    clearTimeout(filterDebounce);
+    filterDebounce = setTimeout(() => {
+      void loadItems({ signedIn: isLibrarian, showDeleted: viewingDeleted, page: 0 });
+    }, 250);
+  }
 
   let isDark = false;
   let menuOpen = false;
@@ -121,20 +137,6 @@
     }
   }
 
-  function statusBadgeVariant(status: ItemStatus) {
-    if (status === "found") {
-      return "bg-emerald-100 text-emerald-900 uppercase dark:bg-emerald-950 dark:text-emerald-300";
-    }
-
-    if (status === "claimed") {
-      return "bg-sky-100 text-sky-900 uppercase dark:bg-sky-950 dark:text-sky-300";
-    }
-  }
-
-  function formatStatusLabel(status: ItemStatus) {
-    return statusLabels[status];
-  }
-
   function formatItemDate(value: string) {
     return new Date(value).toLocaleString(undefined, {
       month: "short",
@@ -150,11 +152,6 @@
   // next clearing is the final moment of the current month.
   let now = new Date();
 
-  // Items must sit at the library for a minimum grace period before they are
-  // eligible for a month-end clearing, so something logged late in the month
-  // rolls over to the next month's clearing rather than being donated days later.
-  const GRACE_PERIOD_DAYS = 14;
-
   type UrgencyLevel = "normal" | "warning" | "critical";
   type Countdown = {
     totalMs: number;
@@ -166,26 +163,13 @@
   };
 
   function getNextClearingDate(reference: Date) {
-    return new Date(reference.getFullYear(), reference.getMonth() + 1, 0, 23, 59, 59, 999);
-  }
-
-  // The earliest month-end clearing that occurs after the item has been at the
-  // library for the full grace period.
-  function getAutomaticDueDate(createdAt: string) {
-    const eligibleFrom = new Date(createdAt);
-    eligibleFrom.setDate(eligibleFrom.getDate() + GRACE_PERIOD_DAYS);
-    return getNextClearingDate(eligibleFrom);
-  }
-
-  function parseManualDueDate(value: string | null) {
-    if (!value) return null;
-    const [year, month, day] = value.split("-").map(Number);
-    if (!year || !month || !day) return null;
-    return new Date(year, month - 1, day, 23, 59, 59, 999);
+    return fromDate(reference, "America/Los_Angeles")
+      .set({ day: 1, hour: 23, minute: 59, second: 59, millisecond: 999 })
+      .add({ months: 1 }).subtract({ days: 1 }).toDate();
   }
 
   function getItemDonationDate(item: ItemRow) {
-    return parseManualDueDate(item.manual_due_date) ?? getAutomaticDueDate(item.created_at);
+    return parseZonedDateTime(`${item.manual_due_date}T23:59:59.999[America/Los_Angeles]`).toDate();
   }
 
   function getCountdown(target: Date, current: Date): Countdown {
@@ -200,11 +184,11 @@
   }
 
   function formatClearingDate(date: Date) {
-    return date.toLocaleDateString(undefined, { month: "long", day: "numeric" });
+    return date.toLocaleDateString(undefined, { timeZone: "America/Los_Angeles", month: "long", day: "numeric" });
   }
 
   function formatDueDate(date: Date) {
-    return date.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
+    return date.toLocaleDateString(undefined, { timeZone: "America/Los_Angeles", month: "long", day: "numeric", year: "numeric" });
   }
 
   function formatCountdown(c: Countdown) {
@@ -292,7 +276,7 @@
       { value: item.location_found, weight: 3 },
       { value: item.description, weight: 2 },
       { value: item.status, weight: 1 },
-      { value: formatStatusLabel(item.status), weight: 1 },
+      { value: statusLabels[item.status], weight: 1 },
     ].map(({ value, weight }) => ({
       text: normalizeSearchValue(value),
       weight,
@@ -348,7 +332,7 @@
       return "No statuses";
     }
 
-    return selectedStatuses.map((status) => formatStatusLabel(status as ItemStatus)).join(", ");
+    return selectedStatuses.map((status) => statusLabels[status as ItemStatus]).join(", ");
   }
 
   function shouldShowDescriptionToggle(description: string | null, maxLength: number) {
@@ -383,13 +367,7 @@
   async function setViewingDeleted(nextValue: boolean) {
     if (!isLibrarian) return;
     viewingDeleted = nextValue;
-
-    if (viewingDeleted) {
-      await loadItems({ signedIn: true, showDeleted: true });
-      return;
-    }
-
-    await loadItems({ signedIn: true, showDeleted: false });
+    await loadItems({ signedIn: true, showDeleted: nextValue, page: 0 });
   }
 
   async function loadSession() {
@@ -404,11 +382,17 @@
     return normalized.includes("row-level security") || normalized.includes("permission denied") || normalized.includes("librarian access");
   }
 
-  async function loadItems(options: { signedIn?: boolean; showDeleted?: boolean } = {}) {
+  async function loadItems(
+    options: { signedIn?: boolean; showDeleted?: boolean; force?: boolean; page?: number } = {},
+  ) {
     const requestId = ++loadItemsRequestId;
     const signedIn = options.signedIn ?? isLibrarian;
     const showDeleted = signedIn && (options.showDeleted ?? viewingDeleted);
-    itemsLoading = true;
+    const scope: ItemsScope = signedIn ? "librarian" : "public";
+    // Scope the cache to the active identity so a cached entry from a previous
+    // session (e.g. before an auth change that didn't route through handleLogout)
+    // can never be served to a different signed-in user. See itemsCache.ts.
+    const identity = signedIn ? (session?.user.id ?? null) : null;
     itemsError = "";
     authError = "";
 
@@ -418,19 +402,114 @@
       selectedStatusFilters = ["found"];
     }
 
-    const query = signedIn
-      ? supabase
-          .from(showDeleted ? "deleted_items" : "items")
-          .select(librarianItemSelectColumns)
-          .in("status", statusOptions)
-          .order("created_at", { ascending: false })
-      : publicSupabase
-          .from("items")
-          .select(publicItemSelectColumns)
-          .eq("status", "found")
-          .order("created_at", { ascending: false });
+    const page = Math.max(0, options.page ?? currentPage);
+    // Any non-empty query switches to "load the whole matching set" mode so the
+    // fuzzy ranking in getFilteredItems sees every row, exactly as before
+    // pagination. The pager is hidden while searching.
+    const searching = searchQuery.trim().length >= 1;
 
-    const { data, error } = await query;
+    const client = signedIn ? supabase : publicSupabase;
+    const columns = signedIn ? librarianItemSelectColumns : publicItemSelectColumns;
+    const table = showDeleted ? "deleted_items" : "items";
+
+    // Push the status filter into the query: with only one page of rows in memory
+    // a client-side status filter could hide every match. Anonymous visitors only
+    // ever see "found".
+    const effectiveStatuses = signedIn
+      ? selectedStatusFilters.length
+        ? selectedStatusFilters
+        : null
+      : ["found"];
+
+    const assignRows = (rows: ItemRow[]) => {
+      if (showDeleted) {
+        deletedItems = rows;
+      } else {
+        items = rows;
+      }
+    };
+
+    if (effectiveStatuses === null) {
+      // "No statuses" selected — nothing can match, so skip the round trip.
+      assignRows([]);
+      totalCount = 0;
+      itemsLoading = false;
+      return;
+    }
+
+    const cacheQuery: ItemsQuery = {
+      scope,
+      showDeleted,
+      identity,
+      page: searching ? "all" : page,
+      statuses: effectiveStatuses,
+    };
+
+    // Serve the last fetch for this query if it's still within the cache TTL,
+    // unless the caller forced a refresh (the Refresh button).
+    if (!options.force) {
+      const cached = getCachedItems(cacheQuery);
+      if (cached) {
+        assignRows(cached.rows);
+        if (!searching) {
+          totalCount = cached.count;
+          currentPage = page;
+        }
+        itemsLoading = false;
+        return;
+      }
+    }
+
+    itemsLoading = true;
+
+    // One query builder for both the paged fetch and the search-corpus chunks —
+    // same columns, status predicate and (manual_due_date, created_at, id) order in every case.
+    const buildQuery = (lo: number, hi: number, withCount: boolean) =>
+      client
+        .from(table)
+        .select(columns, withCount ? { count: "exact" } : undefined)
+        .in("status", effectiveStatuses)
+        .order("manual_due_date", { ascending: true })
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(lo, hi);
+
+    if (searching) {
+      // Load the whole matching set in 1000-row chunks (past PostgREST's implicit
+      // cap) so getFilteredItems can fuzzy-rank exactly as before. Bounded by
+      // SEARCH_ROW_CEILING.
+      const rows: ItemRow[] = [];
+      for (let offset = 0; offset < SEARCH_ROW_CEILING; offset += 1000) {
+        const res = await buildQuery(offset, offset + 999, false);
+
+        if (requestId !== loadItemsRequestId) return;
+
+        if (res.error) {
+          itemsError = res.error.message;
+          if (isAuthorizationError(res.error.message)) {
+            authError = "This signed-in account is not approved for librarian tools.";
+          }
+          assignRows([]);
+          itemsLoading = false;
+          return;
+        }
+
+        const chunk = (res.data ?? []) as unknown as ItemRow[];
+        rows.push(...chunk);
+        if (chunk.length < 1000) break;
+      }
+
+      setCachedItems(cacheQuery, rows, totalCount);
+      assignRows(rows);
+      itemsLoading = false;
+      return;
+    }
+
+    // Only re-count when something changed (forced refresh, or landing on page 0);
+    // paging deeper reuses the total already known from the first load.
+    const withCount = Boolean(options.force) || page === 0;
+    const from = page * PAGE_SIZE;
+    const { data, error, count } = await buildQuery(from, from + PAGE_SIZE - 1, withCount);
 
     if (requestId !== loadItemsRequestId) return;
 
@@ -439,24 +518,25 @@
       if (isAuthorizationError(error.message)) {
         authError = "This signed-in account is not approved for librarian tools.";
       }
-      if (showDeleted) {
-        deletedItems = [];
-      } else {
-        items = [];
-      }
+      assignRows([]);
     } else {
-      const fetchedItems = ((data ?? []) as ItemRow[]).sort(
-        (a, b) => getItemDonationDate(a).getTime() - getItemDonationDate(b).getTime(),
-      );
-
-      if (showDeleted) {
-        deletedItems = fetchedItems;
-      } else {
-        items = fetchedItems;
-      }
+      // DB order (manual_due_date, created_at, id) is authoritative now that rows are paginated —
+      // no client re-sort, which would only ever see the current page.
+      const fetchedItems = (data ?? []) as unknown as ItemRow[];
+      totalCount = count ?? totalCount;
+      currentPage = page;
+      setCachedItems(cacheQuery, fetchedItems, totalCount);
+      assignRows(fetchedItems);
     }
 
     itemsLoading = false;
+  }
+
+  async function goToPage(next: number) {
+    const target = Math.min(Math.max(0, next), totalPages - 1);
+    if (target === currentPage || itemsLoading) return;
+    await loadItems({ signedIn: isLibrarian, showDeleted: viewingDeleted, page: target });
+    itemsListEl?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function handleLogout() {
@@ -468,13 +548,15 @@
     viewingDeleted = false;
     deletedItems = [];
     selectedStatusFilters = ["found"];
+    searchQuery = "";
 
     const { error } = await supabase.auth.signOut();
     if (error) {
       authError = error.message;
     }
 
-    await loadItems({ signedIn: false, showDeleted: false });
+    invalidateItemsCache();
+    await loadItems({ signedIn: false, showDeleted: false, page: 0 });
     authLoading = false;
   }
 
@@ -509,18 +591,37 @@
     }
 
     items = items.map((item) => (item.id === itemId ? (data as ItemRow) : item));
+    await reloadAfterMutation();
     claimantDialogOpen = false;
     toast.success("Item marked as claimed.");
   }
 
-  async function markItemAtLibrary(itemId: string) {
+  // Call after patching `items` locally for a mutation. Refetches to backfill any
+  // row that left the filtered page and correct the total count, stepping back a
+  // page if this emptied the last one.
+  async function reloadAfterMutation() {
+    invalidateItemsCache();
+    const remainingOnPage = displayedItems.filter((item) => selectedStatusFilters.includes(item.status)).length;
+    const page = remainingOnPage === 0 && currentPage > 0 ? currentPage - 1 : currentPage;
+    await loadItems({ signedIn: isLibrarian, showDeleted: viewingDeleted, force: true, page });
+  }
+
+  function changeItemStatus(item: ItemRow, status: ItemStatus) {
+    if (status === "claimed") {
+      openClaimantDialog(item);
+    } else {
+      void setItemStatus(item.id, status);
+    }
+  }
+
+  async function setItemStatus(itemId: string, status: ItemStatus) {
     if (!isLibrarian || statusUpdatingItemId) return;
 
     statusUpdatingItemId = itemId;
 
     const { data, error } = await supabase
       .from("items")
-      .update({ status: "found" })
+      .update({ status })
       .eq("id", itemId)
       .select(librarianItemSelectColumns)
       .single();
@@ -534,7 +635,28 @@
     }
 
     items = items.map((item) => (item.id === itemId ? (data as ItemRow) : item));
-    toast.success("Item marked as at library.");
+    await reloadAfterMutation();
+    toast.success(`Item marked as ${statusLabels[status].toLowerCase()}.`);
+  }
+
+  // Row projection shared by archive (deleteItem) and restore (restoreItem):
+  // items and deleted_items have the same column shape, so both directions copy
+  // the identical field set. Keep this in lockstep with the Postgres insert
+  // grants on both tables.
+  function toMovableItemRow(item: ItemRow, userId: string | null) {
+    return {
+      id: item.id,
+      title: item.title,
+      description: item.description,
+      category: item.category,
+      status: item.status,
+      image_url: item.image_url,
+      location_found: item.location_found,
+      created_at: item.created_at,
+      created_by: userId,
+      manual_due_date: item.manual_due_date,
+      claimed_by_email: item.claimed_by_email,
+    };
   }
 
   async function deleteItem(itemId: string) {
@@ -545,19 +667,7 @@
 
     try {
       pendingItemId = itemId;
-      const toInsert = {
-        id: item.id,
-        title: item.title,
-        description: item.description,
-        category: item.category,
-        status: item.status,
-        image_url: item.image_url,
-        location_found: item.location_found,
-        created_at: item.created_at,
-        created_by: session?.user.id ?? null,
-        manual_due_date: item.manual_due_date,
-        claimed_by_email: item.claimed_by_email,
-      };
+      const toInsert = toMovableItemRow(item, session?.user.id ?? null);
 
       const { error: insertError } = await supabase.from("deleted_items").insert([toInsert]);
 
@@ -578,8 +688,48 @@
       }
 
       items = items.filter((item) => item.id !== itemId);
+      await reloadAfterMutation();
 
       toast.success("Item deleted and archived successfully.");
+    } catch (err) {
+      pendingItemId = null;
+      itemsError = (err as Error).message;
+      toast.error("An unexpected error occurred: " + (err as Error).message);
+    }
+  }
+
+  async function restoreItem(itemId: string) {
+    if (!isLibrarian) return;
+
+    const item = deletedItems.find((i) => i.id === itemId);
+    if (!item) return;
+
+    try {
+      pendingItemId = itemId;
+      const toInsert = toMovableItemRow(item, session?.user.id ?? null);
+
+      const { error: insertError } = await supabase.from("items").insert([toInsert]);
+
+      if (insertError) {
+        pendingItemId = null;
+        itemsError = insertError.message;
+        toast.error("Failed to restore item: " + insertError.message);
+        return;
+      }
+
+      const { error } = await supabase.from("deleted_items").delete().eq("id", itemId);
+      pendingItemId = null;
+
+      if (error) {
+        itemsError = error.message;
+        toast.error("Item was restored but removing the archived copy failed: " + error.message);
+        return;
+      }
+
+      deletedItems = deletedItems.filter((item) => item.id !== itemId);
+      await reloadAfterMutation();
+
+      toast.success("Item restored to the public list.");
     } catch (err) {
       pendingItemId = null;
       itemsError = (err as Error).message;
@@ -591,14 +741,14 @@
     isDark = document.documentElement.classList.contains("dark");
 
     void (async () => {
-      await loadItems({ signedIn: false, showDeleted: false });
+      await loadItems({ signedIn: false, showDeleted: false, page: 0 });
       const restoredSession = await loadSession();
       if (restoredSession) {
-        await loadItems({ signedIn: true, showDeleted: false });
+        await loadItems({ signedIn: true, showDeleted: false, page: 0 });
       }
     })();
 
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
       session = nextSession;
       if (!nextSession) {
         claimantDialogOpen = false;
@@ -606,7 +756,13 @@
       }
       viewingDeleted = false;
       selectedStatusFilters = nextSession ? [...statusOptions] : ["found"];
-      void loadItems({ signedIn: Boolean(nextSession), showDeleted: false });
+      searchQuery = "";
+
+      // onMount already loads the list for the restored session explicitly; the
+      // initial event just echoes that same session, so skip the extra fetch.
+      if (event === "INITIAL_SESSION") return;
+
+      void loadItems({ signedIn: Boolean(nextSession), showDeleted: false, page: 0 });
     });
 
     const clockInterval = setInterval(() => {
@@ -616,6 +772,7 @@
     return () => {
       data.subscription.unsubscribe();
       clearInterval(clockInterval);
+      clearTimeout(filterDebounce);
     };
   });
 </script>
@@ -817,6 +974,7 @@
                 <Input
                   type="search"
                   bind:value={searchQuery}
+                  oninput={scheduleFilterReload}
                   class="h-10 bg-background pl-8 text-sm md:text-sm"
                   placeholder={viewingDeleted ? "Search archived items" : "Search by title, category, location, or description"}
                   aria-label={viewingDeleted ? "Search archived items" : "Search inventory"}
@@ -829,7 +987,7 @@
                     variant="ghost"
                     size="icon"
                     class="size-10 border border-border/70 bg-background text-muted-foreground hover:text-foreground"
-                    onclick={() => loadItems({ signedIn: isLibrarian, showDeleted: viewingDeleted })}
+                    onclick={() => loadItems({ signedIn: isLibrarian, showDeleted: viewingDeleted, force: true })}
                     disabled={itemsLoading}
                     aria-label="Refresh items"
                     title="Refresh"
@@ -888,10 +1046,13 @@
                       <ChevronDown class="text-muted-foreground" />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
-                      <DropdownMenuCheckboxGroup bind:value={selectedStatusFilters}>
+                      <DropdownMenuCheckboxGroup
+                        bind:value={selectedStatusFilters}
+                        onValueChange={scheduleFilterReload}
+                      >
                         {#each (isLibrarian ? statusOptions : (["found"] as ItemStatus[])) as option}
                           <DropdownMenuCheckboxItem value={option} closeOnSelect={false}>
-                            {formatStatusLabel(option)}
+                            {statusLabels[option]}
                           </DropdownMenuCheckboxItem>
                         {/each}
                       </DropdownMenuCheckboxGroup>
@@ -942,7 +1103,7 @@
 
         <Separator class="bg-border/80" />
 
-        <div class="px-4 pt-5">
+        <div bind:this={itemsListEl} class="px-4 pt-5">
         {#if itemsLoading}
           <p class="text-muted-foreground">Loading items...</p>
         {:else if itemsError}
@@ -961,18 +1122,26 @@
                 {@const showItemActions = !viewingDeleted && isLibrarian}
                 <Card class="border-border/80 bg-card py-0">
                   {#if item.image_url}
-                    <img src={item.image_url} alt={item.title} class="h-[clamp(16rem,28vw,20rem)] w-full object-cover" />
+                    <img
+                      src={item.image_url}
+                      alt={item.title}
+                      width={640}
+                      height={320}
+                      loading="lazy"
+                      decoding="async"
+                      class="h-[clamp(16rem,28vw,20rem)] w-full object-cover"
+                    />
                   {:else}
                     <div class="flex h-[clamp(16rem,28vw,20rem)] w-full items-center justify-center bg-muted text-sm text-muted-foreground">
                       No image
                     </div>
                   {/if}
 
-                  <CardContent class={`border-border/80 flex-1 space-y-4 ${showItemActions ? "" : "pb-4"}`}>
+                  <CardContent class={`border-border/80 flex-1 space-y-4 ${isLibrarian ? "" : "pb-4"}`}>
                     <div class="flex items-start justify-between gap-3">
                       <h3 class="text-base font-semibold md:text-lg">{item.title}</h3>
-                      <Badge class={`${statusBadgeVariant(item.status)} text-sm`}>
-                        {formatStatusLabel(item.status)}
+                      <Badge class={`${statusBadgeClasses[item.status]} text-sm uppercase`}>
+                        {statusLabels[item.status]}
                       </Badge>
                     </div>
                     <div>
@@ -1052,19 +1221,22 @@
                   {#if showItemActions}
                     <CardFooter class="border-border/80 flex items-center justify-between gap-2 bg-card px-4 py-4">
                       <div class="flex flex-wrap items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          class="text-sm"
-                          onclick={() => item.status === "found" ? openClaimantDialog(item) : markItemAtLibrary(item.id)}
-                          disabled={statusUpdatingItemId === item.id || claimantDialogSaving}
-                        >
-                          {statusUpdatingItemId === item.id
-                            ? "Updating..."
-                            : item.status === "found"
-                              ? "Mark as claimed"
-                              : "Mark as at library"}
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            class={`${buttonVariants({ variant: "outline", size: "sm" })} text-sm`}
+                            disabled={statusUpdatingItemId === item.id || claimantDialogSaving}
+                          >
+                            {statusUpdatingItemId === item.id ? "Updating..." : "Change status"}
+                            <ChevronDown />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            {#each otherStatuses[item.status] as option}
+                              <DropdownMenuItem onSelect={() => changeItemStatus(item, option)}>
+                                Mark as {statusLabels[option].toLowerCase()}
+                              </DropdownMenuItem>
+                            {/each}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         <Button href={`/edit/${item.id}`} variant="outline" size="sm" class="text-sm">Edit</Button>
                       </div>
                       <Button
@@ -1078,6 +1250,18 @@
                         }}
                       >
                         {isLibrarian ? "Archive item" : "Delete"}
+                      </Button>
+                    </CardFooter>
+                  {:else if isLibrarian}
+                    <CardFooter class="border-border/80 flex items-center justify-end gap-2 bg-card px-4 py-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        class="text-sm"
+                        disabled={pendingItemId === item.id}
+                        onclick={() => restoreItem(item.id)}
+                      >
+                        {pendingItemId === item.id ? "Restoring..." : "Restore item"}
                       </Button>
                     </CardFooter>
                   {/if}
@@ -1121,7 +1305,15 @@
                       <td class="px-4 py-4">
                         <div class="flex items-start gap-3">
                           {#if item.image_url}
-                            <img src={item.image_url} alt={item.title} class="h-12 w-12 rounded-sm object-cover shrink-0" />
+                            <img
+                              src={item.image_url}
+                              alt={item.title}
+                              width={48}
+                              height={48}
+                              loading="lazy"
+                              decoding="async"
+                              class="h-12 w-12 rounded-sm object-cover shrink-0"
+                            />
                           {:else}
                             <div class="flex h-12 w-12 items-center justify-center rounded-sm bg-muted text-xs text-muted-foreground shrink-0">
                               None
@@ -1148,8 +1340,8 @@
                         </div>
                       </td>
                       <td class="px-4 py-4">
-                        <Badge class={`${statusBadgeVariant(item.status)} text-sm`}>
-                          {formatStatusLabel(item.status)}
+                        <Badge class={`${statusBadgeClasses[item.status]} text-sm uppercase`}>
+                          {statusLabels[item.status]}
                         </Badge>
                       </td>
                       <td class="px-4 py-4">
@@ -1202,19 +1394,17 @@
                             </summary>
                             <div class="absolute right-0 top-10 z-20 w-56 rounded-md border border-border/80 bg-popover p-2 shadow-md">
                               <div class="flex flex-col gap-1">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  class="justify-start text-sm"
-                                  onclick={() => item.status === "found" ? openClaimantDialog(item) : markItemAtLibrary(item.id)}
-                                  disabled={statusUpdatingItemId === item.id || claimantDialogSaving}
-                                >
-                                  {statusUpdatingItemId === item.id
-                                    ? "Updating..."
-                                    : item.status === "found"
-                                      ? "Mark as claimed"
-                                      : "Mark as at library"}
-                                </Button>
+                                {#each otherStatuses[item.status] as option}
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    class="justify-start text-sm"
+                                    onclick={() => changeItemStatus(item, option)}
+                                    disabled={statusUpdatingItemId === item.id || claimantDialogSaving}
+                                  >
+                                    Mark as {statusLabels[option].toLowerCase()}
+                                  </Button>
+                                {/each}
                                 <Button href={`/edit/${item.id}`} variant="outline" size="sm" class="justify-start text-sm">Edit item</Button>
                                 <Button
                                   variant="destructive"
@@ -1231,6 +1421,16 @@
                               </div>
                             </div>
                           </details>
+                        {:else if isLibrarian}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            class="text-sm"
+                            disabled={pendingItemId === item.id}
+                            onclick={() => restoreItem(item.id)}
+                          >
+                            {pendingItemId === item.id ? "Restoring..." : "Restore item"}
+                          </Button>
                         {:else}
                           <span class="text-muted-foreground">No actions</span>
                         {/if}
@@ -1240,6 +1440,30 @@
                 </tbody>
               </table>
             </div>
+          {/if}
+
+          {#if !searchMode && totalPages > 1}
+            <nav class="mt-8 flex items-center justify-center gap-3" aria-label="Pagination">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage === 0 || itemsLoading}
+                onclick={() => goToPage(currentPage - 1)}
+              >
+                Previous
+              </Button>
+              <span class="text-sm text-muted-foreground">
+                Page {currentPage + 1} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage >= totalPages - 1 || itemsLoading}
+                onclick={() => goToPage(currentPage + 1)}
+              >
+                Next
+              </Button>
+            </nav>
           {/if}
         {/if}
         </div>
